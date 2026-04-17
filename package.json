@@ -1,0 +1,30 @@
+{
+  "name": "sky-viewer",
+  "version": "0.1.0",
+  "description": "Single-page, offline-capable star visualizer. Pick date + location + direction, see the sky. No backend, no API keys.",
+  "type": "module",
+  "license": "MIT",
+  "engines": { "node": ">=20" },
+  "scripts": {
+    "dev": "node esbuild.config.mjs --serve",
+    "build": "node esbuild.config.mjs && node tools/inline-html.mjs && npm run check:payload",
+    "build:data": "tsx tools/build-stars.ts && tsx tools/build-constellations.ts && tsx tools/build-world.ts && tsx tools/build-cities.ts && tsx tools/build-tz.ts",
+    "check:payload": "node tools/check-payload.mjs",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:e2e": "playwright test",
+    "preview": "node tools/serve-dist.mjs",
+    "deploy": "npm run build && git subtree push --prefix dist origin gh-pages",
+    "lint:types": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.45.0",
+    "@types/node": "^20.12.0",
+    "astronomy-engine": "^2.1.19",
+    "esbuild": "^0.21.0",
+    "jsdom": "^24.0.0",
+    "tsx": "^4.7.0",
+    "typescript": "^5.4.0",
+    "vitest": "^1.6.0"
+  }
+}
