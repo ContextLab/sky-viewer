@@ -13,7 +13,7 @@ import { precessStarToEpoch } from '../../astro/stars';
 import { equatorialToHorizontal } from '../../astro/transforms';
 import type { Constellation } from '../../astro/constellations';
 import type { Observation } from '../../app/types';
-import { isAboveHorizon } from '../projection';
+import { isAboveHorizon, projectAltAzDegToNdc } from '../projection';
 import { LINE_VERT, LINE_FRAG } from './shaders';
 import { compileProgram, makeVAO, deleteGL } from './gl-utils';
 
@@ -136,13 +136,38 @@ export class LinePass {
         // the ground silhouette (the ground pass cannot depth-cull
         // lines that are drawn after it).
         if (!isAboveHorizon(a.altDeg) || !isAboveHorizon(b.altDeg)) continue;
-        // Drop lines whose endpoints straddle the observer — they'd
-        // rasterize as a streak across the whole visible hemisphere
-        // after GPU projection. Real constellation lines are short
-        // (<20° typical), so 90° is a safe cutoff.
-        let dAz = Math.abs(a.azDeg - b.azDeg);
-        if (dAz > 180) dAz = 360 - dAz;
-        if (dAz > 90) continue;
+        // NDC-projection cull: project both endpoints to NDC using the
+        // EXACT projection the GPU uses, then drop the segment if it
+        // either (a) has a null projection (endpoint behind observer
+        // entirely) or (b) spans more than the full viewport width in
+        // x. The second test catches the "perspective streak" case
+        // where two stars on opposite sides of the observer both
+        // still project (clamped), making the GPU rasterize a line
+        // across the whole screen. Real constellation lines never
+        // span more than ~20° of sky on screen.
+        const bearingRad = observation.bearingDeg * DEG2RAD;
+        const pitchRad = observation.pitchDeg * DEG2RAD;
+        const fovRad = observation.fovDeg * DEG2RAD;
+        // aspect here is approximate (we don't have canvas size in
+        // update). Use 1.0 as a safe proxy — the NDC-span check below
+        // is only looking for gross outliers, not pixel-precise clips.
+        const ndcA = projectAltAzDegToNdc(
+          a.altDeg, a.azDeg, bearingRad, pitchRad, fovRad, 1.0,
+        );
+        const ndcB = projectAltAzDegToNdc(
+          b.altDeg, b.azDeg, bearingRad, pitchRad, fovRad, 1.0,
+        );
+        if (!ndcA || !ndcB) continue;
+        // Drop if either endpoint is wildly off-screen. NDC ±1 is the
+        // viewport; we allow a generous ±2 envelope before culling so
+        // lines that straddle the frustum edge still render partly.
+        if (Math.abs(ndcA.x) > 2 || Math.abs(ndcB.x) > 2) continue;
+        if (Math.abs(ndcA.y) > 2 || Math.abs(ndcB.y) > 2) continue;
+        // Drop if the x-span of the segment exceeds the viewport width
+        // (>2 in NDC) — this catches the "streak across the screen"
+        // pathology where both endpoints are projected to opposite
+        // edges of the frustum.
+        if (Math.abs(ndcA.x - ndcB.x) > 1.6) continue;
         this.vertexData[write] = a.altDeg * DEG2RAD;
         this.vertexData[write + 1] = a.azDeg * DEG2RAD;
         this.vertexData[write + 2] = b.altDeg * DEG2RAD;

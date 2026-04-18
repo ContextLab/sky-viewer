@@ -335,13 +335,15 @@ export function createCanvas2DRenderer(canvas: HTMLCanvasElement): Renderer {
         // would otherwise paint through the ground silhouette (same
         // reasoning as the WebGL2 line pass).
         if (!isAboveHorizon(a.altDeg) || !isAboveHorizon(b.altDeg)) continue;
-        // Drop wrap-around lines (endpoints on opposite sides of observer).
-        let dAz = Math.abs(a.azDeg - b.azDeg);
-        if (dAz > 180) dAz = 360 - dAz;
-        if (dAz > 90) continue;
         const pa = projectAltAzDegToNdc(a.altDeg, a.azDeg, bearingRad, pitchRad, fovRad, aspect);
         const pb = projectAltAzDegToNdc(b.altDeg, b.azDeg, bearingRad, pitchRad, fovRad, aspect);
         if (!pa || !pb) continue;
+        // NDC-projection cull: drop lines that span >1.6 NDC units in
+        // x (= "streak across the screen" pathology) or whose endpoint
+        // is wildly off-frustum. Mirrors the WebGL2 line-pass cull.
+        if (Math.abs(pa.x) > 2 || Math.abs(pb.x) > 2) continue;
+        if (Math.abs(pa.y) > 2 || Math.abs(pb.y) > 2) continue;
+        if (Math.abs(pa.x - pb.x) > 1.6) continue;
         const A = ndcToCssPixels(pa.x, pa.y, cssWidth, cssHeight);
         const B = ndcToCssPixels(pb.x, pb.y, cssWidth, cssHeight);
         ctx.moveTo(A.px, A.py);
