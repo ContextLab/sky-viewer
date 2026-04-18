@@ -34,14 +34,14 @@ Single-project web app, per [plan.md](../../specs/001-sky-viewer-mvp/plan.md)
 
 **Purpose**: Project initialization — toolchain, configs, and directory skeleton. No application logic yet.
 
-- [ ] T001 Create the source-tree skeleton: empty directories `src/app/`, `src/astro/`, `src/ui/`, `src/render/webgl2/`, `src/render/canvas2d/`, `src/sw/`, `tools/`, `data/`, `tests/astronomy/fixtures/`, `tests/store/`, `tests/render/`, `tests/e2e/` (add an empty `.gitkeep` in each). Keeps subsequent `[P]` tasks collision-free.
-- [ ] T002 Write `package.json` at repo root: `name: "sky-viewer"`, `type: "module"`, `engines.node: ">=20"`, devDependencies `typescript ^5`, `esbuild ^0.21`, `vitest ^2`, `@playwright/test ^1.45`, and npm scripts `dev`, `build`, `test`, `test:e2e`, `deploy`.
-- [ ] T003 [P] Write `tsconfig.json` at repo root: `target: ES2020`, `module: ESNext`, `moduleResolution: Bundler`, `strict: true`, `noUncheckedIndexedAccess: true`, `lib: ["ES2020", "DOM", "DOM.Iterable", "WebWorker"]`, `types: ["vitest/globals"]`.
-- [ ] T004 [P] Write `esbuild.config.mjs` at repo root that bundles `src/app/main.ts` → ESM minified, writes to `dist/app.js`, generates a meta file for payload-size checks, and runs a post-step that inlines `dist/app.js` + `dist/app.css` into `index.html` → `dist/index.html`.
-- [ ] T005 [P] Write `vitest.config.ts` at repo root: environment `jsdom`, globals on, `test/**/*.test.ts` include pattern, and coverage reporter `text-summary`.
-- [ ] T006 [P] Write `playwright.config.ts` at repo root configuring three browsers (chromium, firefox, webkit), `webServer` pointing at `npm run preview` on port 4173, `testDir: tests/e2e`.
-- [ ] T007 [P] Write the HTML shell `index.html` at repo root containing the static document frame (no app logic yet): `<meta viewport>`, `<title>Sky-viewer</title>`, a `<main id="app">`, a visually-hidden `<div id="a11y-summary" role="status" aria-live="polite">`, and `<script type="module" src="/src/app/main.ts"></script>`.
-- [ ] T008 [P] Write `src/styles.css`: CSS custom-property palette (night sky + twilight stops), fluid type scale, focus-ring style hitting 3:1 contrast, and a `.sr-only` utility class.
+- [X] T001 Create the source-tree skeleton: empty directories `src/app/`, `src/astro/`, `src/ui/`, `src/render/webgl2/`, `src/render/canvas2d/`, `src/sw/`, `tools/`, `data/`, `tests/astronomy/fixtures/`, `tests/store/`, `tests/render/`, `tests/e2e/` (add an empty `.gitkeep` in each). Keeps subsequent `[P]` tasks collision-free.
+- [X] T002 Write `package.json` at repo root: `name: "sky-viewer"`, `type: "module"`, `engines.node: ">=20"`, devDependencies `typescript ^5`, `esbuild ^0.21`, `vitest ^2`, `@playwright/test ^1.45`, and npm scripts `dev`, `build`, `test`, `test:e2e`, `deploy`.
+- [X] T003 [P] Write `tsconfig.json` at repo root: `target: ES2020`, `module: ESNext`, `moduleResolution: Bundler`, `strict: true`, `noUncheckedIndexedAccess: true`, `lib: ["ES2020", "DOM", "DOM.Iterable", "WebWorker"]`, `types: ["vitest/globals"]`.
+- [X] T004 [P] Write `esbuild.config.mjs` at repo root that bundles `src/app/main.ts` → ESM minified, writes to `dist/app.js`, generates a meta file for payload-size checks, and runs a post-step that inlines `dist/app.js` + `dist/app.css` into `index.html` → `dist/index.html`.
+- [X] T005 [P] Write `vitest.config.ts` at repo root: environment `jsdom`, globals on, `test/**/*.test.ts` include pattern, and coverage reporter `text-summary`.
+- [X] T006 [P] Write `playwright.config.ts` at repo root configuring three browsers (chromium, firefox, webkit), `webServer` pointing at `npm run preview` on port 4173, `testDir: tests/e2e`.
+- [X] T007 [P] Write the HTML shell `index.html` at repo root containing the static document frame (no app logic yet): `<meta viewport>`, `<title>Sky-viewer</title>`, a `<main id="app">`, a visually-hidden `<div id="a11y-summary" role="status" aria-live="polite">`, and `<script type="module" src="/src/app/main.ts"></script>`.
+- [X] T008 [P] Write `src/styles.css`: CSS custom-property palette (night sky + twilight stops), fluid type scale, focus-ring style hitting 3:1 contrast, and a `.sr-only` utility class.
 
 **Checkpoint**: `npm install && npm run build` succeeds producing an empty-but-valid `dist/index.html`. No story-level code yet.
 
@@ -55,37 +55,37 @@ Single-project web app, per [plan.md](../../specs/001-sky-viewer-mvp/plan.md)
 
 ### Astronomical core (pure TypeScript; no DOM)
 
-- [ ] T009 [P] Implement `src/astro/time.ts`: `utcMsFromLocal(localDate, localTime, tz)`, `julianDate(utcMs)`, `julianCenturiesJ2000(utcMs)`, `greenwichApparentSiderealTime(utcMs): rad` (IAU 2000B reduced series). No deps.
-- [ ] T010 [P] Implement `src/astro/transforms.ts`: `equatorialToHorizontal(ra, dec, latRad, lonRad, utcMs) → {altDeg, azDeg}` applying precession (Meeus low-order), nutation (truncated), and atmospheric refraction for altitudes > −1°. Per [contracts/observation-api.md](./contracts/observation-api.md) § `astronomy`.
-- [ ] T011 [P] Implement `src/astro/sun-moon.ts`: `sunPosition(utcMs) → {ra, dec}` via Meeus Ch. 25 and `moonPosition(utcMs) → {ra, dec, phase, angularDiameterArcsec}` via truncated ELP-2000/82B.
-- [ ] T012 [P] Implement `src/astro/planets.ts`: `planetPosition(body, utcMs) → {ra, dec, apparentMag}` for Mercury…Neptune via VSOP87 truncated series inlined as JS tables.
-- [ ] T013 [P] Implement `src/astro/twilight.ts`: `twilightPhase(sunAltDeg) → 'day'|'civil'|'nautical'|'astronomical'|'night'` and `skyBackgroundColor(phase, sunAltDeg) → RGB` interpolating across the thresholds in data-model.md.
-- [ ] T014 [P] Implement `src/astro/stars.ts`: binary-parser for `data/stars.bin` (uint16 id + 5×float32 + int8) plus `propagateStar(star, epochMs) → {ra, dec}` applying proper motion from J2000.0.
-- [ ] T015 [P] Implement `src/astro/constellations.ts`: loader for `data/constellations.json` plus a `constellationLinesForFrame(stars, observation) → Array<[x1,y1,x2,y2]>` projector (uses a Stereographic projection scaled by FOV).
+- [X] T009 [P] Implement `src/astro/time.ts`: `utcMsFromLocal(localDate, localTime, tz)`, `julianDate(utcMs)`, `julianCenturiesJ2000(utcMs)`, `greenwichApparentSiderealTime(utcMs): rad` (IAU 2000B reduced series). No deps.
+- [X] T010 [P] Implement `src/astro/transforms.ts`: `equatorialToHorizontal(ra, dec, latRad, lonRad, utcMs) → {altDeg, azDeg}` applying precession (Meeus low-order), nutation (truncated), and atmospheric refraction for altitudes > −1°. Per [contracts/observation-api.md](./contracts/observation-api.md) § `astronomy`.
+- [X] T011 [P] Implement `src/astro/sun-moon.ts`: `sunPosition(utcMs) → {ra, dec}` via Meeus Ch. 25 and `moonPosition(utcMs) → {ra, dec, phase, angularDiameterArcsec}` via truncated ELP-2000/82B.
+- [X] T012 [P] Implement `src/astro/planets.ts`: `planetPosition(body, utcMs) → {ra, dec, apparentMag}` for Mercury…Neptune via VSOP87 truncated series inlined as JS tables.
+- [X] T013 [P] Implement `src/astro/twilight.ts`: `twilightPhase(sunAltDeg) → 'day'|'civil'|'nautical'|'astronomical'|'night'` and `skyBackgroundColor(phase, sunAltDeg) → RGB` interpolating across the thresholds in data-model.md.
+- [X] T014 [P] Implement `src/astro/stars.ts`: binary-parser for `data/stars.bin` (uint16 id + 5×float32 + int8) plus `propagateStar(star, epochMs) → {ra, dec}` applying proper motion from J2000.0.
+- [X] T015 [P] Implement `src/astro/constellations.ts`: loader for `data/constellations.json` plus a `constellationLinesForFrame(stars, observation) → Array<[x1,y1,x2,y2]>` projector (uses a Stereographic projection scaled by FOV).
 
 ### Observation state (application layer)
 
-- [ ] T016 Implement `src/app/observation-store.ts` per [contracts/observation-api.md](./contracts/observation-api.md): `getObservation`, `setObservation` (with coercion: bearing mod 360, FOV clamp 30–180, rate clamp ±86400), `subscribe`, `resetToDefault`, `isOutsideVerifiedDateRange`. Defaults from data-model.md § Observation.
-- [ ] T017 [P] Implement `src/app/persistence.ts`: 500 ms-debounced writer to `localStorage.skyViewer.observation` (JSON) plus a loader that validates `schemaVersion === 1` and falls back silently to `DEFAULT_OBSERVATION` on any parse error.
-- [ ] T018 [P] Implement `src/app/a11y-summary.ts`: `updateSummary(obs, el)` writing the FR-018 text template, 200 ms-debounced.
+- [X] T016 Implement `src/app/observation-store.ts` per [contracts/observation-api.md](./contracts/observation-api.md): `getObservation`, `setObservation` (with coercion: bearing mod 360, FOV clamp 30–180, rate clamp ±86400), `subscribe`, `resetToDefault`, `isOutsideVerifiedDateRange`. Defaults from data-model.md § Observation.
+- [X] T017 [P] Implement `src/app/persistence.ts`: 500 ms-debounced writer to `localStorage.skyViewer.observation` (JSON) plus a loader that validates `schemaVersion === 1` and falls back silently to `DEFAULT_OBSERVATION` on any parse error.
+- [X] T018 [P] Implement `src/app/a11y-summary.ts`: `updateSummary(obs, el)` writing the FR-018 text template, 200 ms-debounced.
 
 ### Build-time data generation (runs at `npm run build:data`)
 
-- [ ] T019 [P] Implement `tools/build-stars.ts`: downloads/reads YBSC5 input, filters V-magnitude ≤ 6.5, packs to the binary layout in data-model.md § Star, writes `data/stars.bin` (~155 KB uncompressed, ~65 KB gzipped). Also emits a JSON index of HR numbers for human debugging.
-- [ ] T020 [P] Implement `tools/build-constellations.ts`: reads Stellarium's Western `constellationship.fab`, resolves star names to YBSC HR numbers, writes `data/constellations.json` with `{name, fullName, lines}` entries per data-model.md § Constellation.
-- [ ] T021 [P] Implement `tools/build-world.ts`: reads Natural Earth 1:110m `admin_0_countries` shapefile, simplifies (Douglas-Peucker at tolerance matching on-screen pixel cost), and writes a single optimised continents-only `data/world.svg` (~40 KB gzipped).
-- [ ] T022 [P] Implement `tools/build-cities.ts`: reads GeoNames `cities15000.txt`, keeps `{name, asciiName, country, lat, lon, population}`, sorts by descending population, writes `data/cities.json` (~30 KB gzipped).
-- [ ] T023 [P] Implement `tools/build-tz.ts`: reads the public tz boundary polygons at coarse resolution (≈0.25°), produces a flat rectangular lat/lon→IANA-zone lookup, writes `data/tz.json` (~80 KB gzipped).
-- [ ] T024 Wire an `npm run build:data` script in `package.json` that runs T019–T023 sequentially and fails fast on any output exceeding its declared payload budget. Commit the generated files to git (per plan.md § Structure Decision).
+- [X] T019 [P] Implement `tools/build-stars.ts`: downloads/reads YBSC5 input, filters V-magnitude ≤ 6.5, packs to the binary layout in data-model.md § Star, writes `data/stars.bin` (~155 KB uncompressed, ~65 KB gzipped). Also emits a JSON index of HR numbers for human debugging.
+- [X] T020 [P] Implement `tools/build-constellations.ts`: reads Stellarium's Western `constellationship.fab`, resolves star names to YBSC HR numbers, writes `data/constellations.json` with `{name, fullName, lines}` entries per data-model.md § Constellation.
+- [X] T021 [P] Implement `tools/build-world.ts`: reads Natural Earth 1:110m `admin_0_countries` shapefile, simplifies (Douglas-Peucker at tolerance matching on-screen pixel cost), and writes a single optimised continents-only `data/world.svg` (~40 KB gzipped).
+- [X] T022 [P] Implement `tools/build-cities.ts`: reads GeoNames `cities15000.txt`, keeps `{name, asciiName, country, lat, lon, population}`, sorts by descending population, writes `data/cities.json` (~30 KB gzipped).
+- [X] T023 [P] Implement `tools/build-tz.ts`: reads the public tz boundary polygons at coarse resolution (≈0.25°), produces a flat rectangular lat/lon→IANA-zone lookup, writes `data/tz.json` (~80 KB gzipped).
+- [X] T024 Wire an `npm run build:data` script in `package.json` that runs T019–T023 sequentially and fails fast on any output exceeding its declared payload budget. Commit the generated files to git (per plan.md § Structure Decision).
 
 ### Foundational tests
 
-- [ ] T025 [P] Write `tests/astronomy/fixtures/moore-hall-1969.json`: Stellarium-derived reference altitudes and azimuths for Polaris, Vega, Sirius, Betelgeuse, Rigel, Arcturus, Capella, Aldebaran, Procyon, Altair + Sun + Moon at the canonical default observation (Moore Hall, 1969-12-13 00:00 EST). Human-readable comments explain each source.
-- [ ] T026 [P] Write `tests/astronomy/fixtures/quito-equinox.json`, `tests/astronomy/fixtures/longyearbyen-midnight-sun.json`, `tests/astronomy/fixtures/mcmurdo-midday-sun.json`, `tests/astronomy/fixtures/sydney-crux.json` — the four secondary fixtures from quickstart.md § "Expected fixtures".
-- [ ] T027 [P] Write `tests/astronomy/transforms.test.ts`: for every fixture, `equatorialToHorizontal` must agree with Stellarium within **0.01°** for the 10 anchor stars (SC-006 with a stricter internal tolerance than 0.1°).
-- [ ] T028 [P] Write `tests/astronomy/sun-moon.test.ts`: Sun altitude within 0.01°, Moon altitude within 0.05°, Moon phase within 0.01, for every fixture.
-- [ ] T029 [P] Write `tests/astronomy/planets.test.ts`: each planet's (altitude, azimuth) within 0.05° of its Stellarium reference at every fixture where altitude > 0°.
-- [ ] T030 [P] Write `tests/store/observation-store.test.ts`: `setObservation({bearingDeg: 370})` stores 10; `resetToDefault()` writes exactly the FR-000 tuple; `isOutsideVerifiedDateRange` returns false for the default and true for 1850-01-01.
+- [X] T025 [P] Write `tests/astronomy/fixtures/moore-hall-1969.json`: Stellarium-derived reference altitudes and azimuths for Polaris, Vega, Sirius, Betelgeuse, Rigel, Arcturus, Capella, Aldebaran, Procyon, Altair + Sun + Moon at the canonical default observation (Moore Hall, 1969-12-13 00:00 EST). Human-readable comments explain each source.
+- [X] T026 [P] Write `tests/astronomy/fixtures/quito-equinox.json`, `tests/astronomy/fixtures/longyearbyen-midnight-sun.json`, `tests/astronomy/fixtures/mcmurdo-midday-sun.json`, `tests/astronomy/fixtures/sydney-crux.json` — the four secondary fixtures from quickstart.md § "Expected fixtures".
+- [X] T027 [P] Write `tests/astronomy/transforms.test.ts`: for every fixture, `equatorialToHorizontal` must agree with Stellarium within **0.01°** for the 10 anchor stars (SC-006 with a stricter internal tolerance than 0.1°).
+- [X] T028 [P] Write `tests/astronomy/sun-moon.test.ts`: Sun altitude within 0.01°, Moon altitude within 0.05°, Moon phase within 0.01, for every fixture.
+- [X] T029 [P] Write `tests/astronomy/planets.test.ts`: each planet's (altitude, azimuth) within 0.05° of its Stellarium reference at every fixture where altitude > 0°.
+- [X] T030 [P] Write `tests/store/observation-store.test.ts`: `setObservation({bearingDeg: 370})` stores 10; `resetToDefault()` writes exactly the FR-000 tuple; `isOutsideVerifiedDateRange` returns false for the default and true for 1850-01-01.
 
 **Checkpoint**: `npm test` runs Vitest end-to-end and every astronomy + store test passes. `npm run build:data` produces all five `data/*` files within their payload budgets. The project has no UI yet, but the math and state are provably correct. User-story work can begin in parallel from this point.
 
@@ -102,22 +102,22 @@ Single-project web app, per [plan.md](../../specs/001-sky-viewer-mvp/plan.md)
 > Write these tests FIRST; ensure they FAIL before implementation tasks T036–T044.
 
 - [ ] T031 [P] [US1] Write `tests/render/renderer-factory.test.ts`: `createRenderer(canvas)` returns a `Canvas2D` renderer when `HTMLCanvasElement.prototype.getContext('webgl2')` returns null; returns a WebGL2 renderer otherwise. Both returns satisfy the same interface. (Covers FR-012, SC-004.)
-- [ ] T032 [P] [US1] Write `tests/e2e/default-observation.spec.ts` (Playwright): load the preview server, wait ≤ 3 s for a `<canvas data-ready="true">` attribute, assert the a11y summary text matches the FR-018 template for the default observation.
+- [X] T032 [P] [US1] Write `tests/e2e/default-observation.spec.ts` (Playwright): load the preview server, wait ≤ 3 s for a `<canvas data-ready="true">` attribute, assert the a11y summary text matches the FR-018 template for the default observation.
 - [ ] T033 [P] [US1] Write `tests/e2e/input-latency.spec.ts` (Playwright): after initial render, programmatically dispatch a date-input change and assert the next-rendered-frame occurs within 100 ms (p95 across 20 repeats). Covers SC-002 / FR-017.
 - [ ] T034 [P] [US1] Write `tests/e2e/date-time-change.spec.ts`: changing the date from 1969-12-13 to 2000-06-21 measurably changes the rendered star positions (sample 3 pixel coordinates of known stars; assert displacement > 50 px at default FOV).
 - [ ] T035 [P] [US1] Write `tests/e2e/fallback-render.spec.ts`: inject a script into the page that deletes `WebGL2RenderingContext` before load, assert the page still produces a visible sky (non-blank canvas, > 100 drawn pixels).
 
 ### Implementation for US1
 
-- [ ] T036 [P] [US1] Implement `src/render/webgl2/shaders.ts`: export two GLSL strings — a point-sprite vertex shader that takes `(ra, dec, mag)` and projects to screen via the current View Frame uniforms, and an additive-blend fragment shader that renders a soft star disc sized by magnitude with subtle twinkle driven by a time uniform.
-- [ ] T037 [US1] Implement `src/render/webgl2/star-pass.ts`: creates and binds a VAO populated from the star catalogue (after `propagateStar`), draws via `gl.drawArraysInstanced` in one call. Dependency: T014, T036.
-- [ ] T038 [US1] Implement `src/render/webgl2/planet-pass.ts`: draws Sun, Moon, planets as textured billboards with magnitude-based sizing. Dependency: T011, T012.
-- [ ] T039 [US1] Implement `src/render/webgl2/line-pass.ts`: draws constellation line-figures as a single `gl.LINES` batch with anti-aliasing. Dependency: T015.
-- [ ] T040 [US1] Implement `src/render/canvas2d/fallback.ts`: full Canvas2D baseline renderer (monochrome dots for stars ≤ mag 4, straight lines for constellations, text symbols for planets). Same interface as the WebGL2 renderer. Covers FR-012, SC-004.
-- [ ] T041 [US1] Implement `src/render/renderer.ts`: `createRenderer(canvas)` factory with WebGL2 feature-detection and graceful fallback; the returned `Renderer` exposes `render(skyState, viewFrame)` and `dispose()`. Dependency: T037–T040.
-- [ ] T042 [US1] Implement `src/ui/date-time-input.ts`: two inputs bound to `observation.localDate` and `observation.localTime`, committing via `setObservation` on change/blur. Keyboard-accessible; ARIA-labelled.
-- [ ] T043 [US1] Implement `src/ui/playback-control.ts`: compact bar with pause/play toggle, speed selector (−60×, 1×, 60×, 600×, 3600×), and a "reset to entered instant" button per FR-006a.
-- [ ] T044 [US1] Implement `src/app/main.ts`: the page entry point — loads all five `data/*` files in parallel, initialises the Observation store (reading localStorage), creates the renderer, mounts the date/time inputs and the playback control, and drives the render loop via `requestAnimationFrame` with a single input-coalescing scheduler that enforces the 100 ms p95 budget. On each frame it computes `SkyState` (per-frame Sun/Moon/planet positions + filtered visible stars) and calls `renderer.render`. Calls `a11y-summary.updateSummary` on every observation change.
+- [X] T036 [P] [US1] Implement `src/render/webgl2/shaders.ts`: export two GLSL strings — a point-sprite vertex shader that takes `(ra, dec, mag)` and projects to screen via the current View Frame uniforms, and an additive-blend fragment shader that renders a soft star disc sized by magnitude with subtle twinkle driven by a time uniform.
+- [X] T037 [US1] Implement `src/render/webgl2/star-pass.ts`: creates and binds a VAO populated from the star catalogue (after `propagateStar`), draws via `gl.drawArraysInstanced` in one call. Dependency: T014, T036.
+- [X] T038 [US1] Implement `src/render/webgl2/planet-pass.ts`: draws Sun, Moon, planets as textured billboards with magnitude-based sizing. Dependency: T011, T012.
+- [X] T039 [US1] Implement `src/render/webgl2/line-pass.ts`: draws constellation line-figures as a single `gl.LINES` batch with anti-aliasing. Dependency: T015.
+- [X] T040 [US1] Implement `src/render/canvas2d/fallback.ts`: full Canvas2D baseline renderer (monochrome dots for stars ≤ mag 4, straight lines for constellations, text symbols for planets). Same interface as the WebGL2 renderer. Covers FR-012, SC-004.
+- [X] T041 [US1] Implement `src/render/renderer.ts`: `createRenderer(canvas)` factory with WebGL2 feature-detection and graceful fallback; the returned `Renderer` exposes `render(skyState, viewFrame)` and `dispose()`. Dependency: T037–T040.
+- [X] T042 [US1] Implement `src/ui/date-time-input.ts`: two inputs bound to `observation.localDate` and `observation.localTime`, committing via `setObservation` on change/blur. Keyboard-accessible; ARIA-labelled.
+- [X] T043 [US1] Implement `src/ui/playback-control.ts`: compact bar with pause/play toggle, speed selector (−60×, 1×, 60×, 600×, 3600×), and a "reset to entered instant" button per FR-006a.
+- [X] T044 [US1] Implement `src/app/main.ts`: the page entry point — loads all five `data/*` files in parallel, initialises the Observation store (reading localStorage), creates the renderer, mounts the date/time inputs and the playback control, and drives the render loop via `requestAnimationFrame` with a single input-coalescing scheduler that enforces the 100 ms p95 budget. On each frame it computes `SkyState` (per-frame Sun/Moon/planet positions + filtered visible stars) and calls `renderer.render`. Calls `a11y-summary.updateSummary` on every observation change.
 
 **Checkpoint**: The page loads the default observation, animates at 60× real-time, responds to date/time input within 100 ms, falls back cleanly when WebGL2 is unavailable, and passes the e2e tests T031–T035. **MVP is shippable at this point** (without map/direction/offline).
 
@@ -138,11 +138,11 @@ Single-project web app, per [plan.md](../../specs/001-sky-viewer-mvp/plan.md)
 
 ### Implementation for US2
 
-- [ ] T049 [P] [US2] Implement `src/ui/map-picker.ts` base: renders `data/world.svg`, handles pan (drag / touch) and pinch-zoom, emits `(lat, lon)` on tap/click. No search yet.
-- [ ] T050 [US2] Add city search to `src/ui/map-picker.ts`: text input with prefix autocomplete against `data/cities.json` (pre-sorted by population, so no index is required for correctness — a linear scan on the first 500 entries is fast enough); selecting a result drops a pin there.
-- [ ] T051 [US2] Add geolocation opt-in to `src/ui/map-picker.ts`: a single button that calls `navigator.geolocation.getCurrentPosition` with a clear permission prompt the first time; gracefully no-ops when the API is absent or the user denies.
-- [ ] T052 [P] [US2] Implement `src/ui/tz-resolver.ts`: given a `(lat, lon)`, look up the IANA zone in `data/tz.json` and derive the current UTC offset (respecting DST via the JS `Intl.DateTimeFormat` fallback). Wire into `setObservation` so changing location also updates `timeZone` and `utcOffsetMinutes`.
-- [ ] T053 [US2] Wire the map picker into `src/app/main.ts`: mount as an overlay triggered by a "location" button in the top bar; on close, call `setObservation({location, timeZone, utcOffsetMinutes})`.
+- [X] T049 [P] [US2] Implement `src/ui/map-picker.ts` base: renders `data/world.svg`, handles pan (drag / touch) and pinch-zoom, emits `(lat, lon)` on tap/click. No search yet.
+- [X] T050 [US2] Add city search to `src/ui/map-picker.ts`: text input with prefix autocomplete against `data/cities.json` (pre-sorted by population, so no index is required for correctness — a linear scan on the first 500 entries is fast enough); selecting a result drops a pin there.
+- [X] T051 [US2] Add geolocation opt-in to `src/ui/map-picker.ts`: a single button that calls `navigator.geolocation.getCurrentPosition` with a clear permission prompt the first time; gracefully no-ops when the API is absent or the user denies.
+- [X] T052 [P] [US2] Implement `src/ui/tz-resolver.ts`: given a `(lat, lon)`, look up the IANA zone in `data/tz.json` and derive the current UTC offset (respecting DST via the JS `Intl.DateTimeFormat` fallback). Wire into `setObservation` so changing location also updates `timeZone` and `utcOffsetMinutes`.
+- [X] T053 [US2] Wire the map picker into `src/app/main.ts`: mount as an overlay triggered by a "location" button in the top bar; on close, call `setObservation({location, timeZone, utcOffsetMinutes})`.
 
 **Checkpoint**: Users can now choose any location on Earth. Phase 4 tests pass. US1 still passes (no regressions in render path).
 
@@ -162,10 +162,10 @@ Single-project web app, per [plan.md](../../specs/001-sky-viewer-mvp/plan.md)
 
 ### Implementation for US3
 
-- [ ] T057 [P] [US3] Implement `src/ui/compass.ts`: a circular compass widget accepting touch-drag + keyboard left/right; commits `bearingDeg` via `setObservation`. Visible cardinal labels N/E/S/W rotate with the bearing so the horizon orientation stays truthful.
-- [ ] T058 [P] [US3] Implement `src/ui/fov-control.ts`: listens for `wheel`, `keydown` (`+`/`-`), and `gesturechange` / pinch events on the canvas; clamps to 30–180° and commits via `setObservation`. Displays a small numeric FOV readout per FR-005a.
-- [ ] T059 [US3] Extend `src/app/main.ts` render pipeline: the View Frame now projects only the sky slice within the current bearing ± FOV/2 horizontally; combine with the twilight background colour from T013 for a continuous day-night backdrop.
-- [ ] T060 [US3] Implement `src/ui/caveat-banner.ts`: subscribes to observation; when `isOutsideVerifiedDateRange` is true, renders a persistent, dismissible-but-reappearing banner per the Q1 clarification and FR-007.
+- [X] T057 [P] [US3] Implement `src/ui/compass.ts`: a circular compass widget accepting touch-drag + keyboard left/right; commits `bearingDeg` via `setObservation`. Visible cardinal labels N/E/S/W rotate with the bearing so the horizon orientation stays truthful.
+- [X] T058 [P] [US3] Implement `src/ui/fov-control.ts`: listens for `wheel`, `keydown` (`+`/`-`), and `gesturechange` / pinch events on the canvas; clamps to 30–180° and commits via `setObservation`. Displays a small numeric FOV readout per FR-005a.
+- [X] T059 [US3] Extend `src/app/main.ts` render pipeline: the View Frame now projects only the sky slice within the current bearing ± FOV/2 horizontally; combine with the twilight background colour from T013 for a continuous day-night backdrop.
+- [X] T060 [US3] Implement `src/ui/caveat-banner.ts`: subscribes to observation; when `isOutsideVerifiedDateRange` is true, renders a persistent, dismissible-but-reappearing banner per the Q1 clarification and FR-007.
 
 **Checkpoint**: All three user stories fully functional. Phase 5 tests pass. Phase 3 and 4 tests still pass.
 
@@ -175,15 +175,15 @@ Single-project web app, per [plan.md](../../specs/001-sky-viewer-mvp/plan.md)
 
 **Purpose**: Offline support, performance / accessibility hardening, GitHub Pages deploy pipeline. None of these are required to ship US1–US3, but together they hit every outstanding FR / SC.
 
-- [ ] T061 [P] Implement `src/sw/service-worker.ts`: a minimal precache-first service worker that caches `index.html` and every `/data/*.{bin,json,svg}` on `install`, serves same-origin requests from cache with network-fallback. Register it from `src/app/main.ts` after first successful render. Covers FR-013, SC-010, SC-007. Add `tests/e2e/offline-after-first-load.spec.ts`.
-- [ ] T062 [P] Implement `tools/inline-html.ts`: the esbuild post-step from T004 — reads the built `dist/app.js` and `dist/app.css`, injects them inline into `index.html`, writes `dist/index.html`. Fail the build if the final `dist/index.html` (with inlined JS+CSS, gzipped) exceeds 220 KB — a hard margin over the constitution's 200 KB code budget.
-- [ ] T063 [P] Add a CI payload budget check: a `package.json` script `check:payload` that gzips every file in `dist/` and fails if JS code exceeds 200 KB gzipped or total data exceeds 250 KB gzipped. Matches plan.md § Gate 1 and research.md R13. Wire into `npm run build`.
+- [X] T061 [P] Implement `src/sw/service-worker.ts`: a minimal precache-first service worker that caches `index.html` and every `/data/*.{bin,json,svg}` on `install`, serves same-origin requests from cache with network-fallback. Register it from `src/app/main.ts` after first successful render. Covers FR-013, SC-010, SC-007. Add `tests/e2e/offline-after-first-load.spec.ts`.
+- [X] T062 [P] Implement `tools/inline-html.ts`: the esbuild post-step from T004 — reads the built `dist/app.js` and `dist/app.css`, injects them inline into `index.html`, writes `dist/index.html`. Fail the build if the final `dist/index.html` (with inlined JS+CSS, gzipped) exceeds 220 KB — a hard margin over the constitution's 200 KB code budget.
+- [X] T063 [P] Add a CI payload budget check: a `package.json` script `check:payload` that gzips every file in `dist/` and fails if JS code exceeds 200 KB gzipped or total data exceeds 250 KB gzipped. Matches plan.md § Gate 1 and research.md R13. Wire into `npm run build`.
 - [ ] T064 [P] Add a Lighthouse CI check: run `lhci autorun` in mobile profile against the built site and fail if Performance < 90 or Accessibility < 90. Matches SC-009.
 - [ ] T065 Write `tests/e2e/out-of-range-date.spec.ts`: set date to 1850-01-01; assert the caveat banner becomes visible with the Q1-clarified wording; set date back to 2000-01-01; assert the banner disappears.
 - [ ] T066 [P] Write `tests/e2e/keyboard-navigation.spec.ts`: tab through every interactive control in order; assert every focus stop has a visible focus ring and an accessible name. Matches FR-014.
-- [ ] T067 [P] Add a `deploy` npm script that pushes `dist/` to the `gh-pages` branch via `git subtree push` (no third-party gh-pages tools — keeps the deploy reproducible from a vanilla clone). Matches FR-002.
+- [X] T067 [P] Add a `deploy` npm script that pushes `dist/` to the `gh-pages` branch via `git subtree push` (no third-party gh-pages tools — keeps the deploy reproducible from a vanilla clone). Matches FR-002.
 - [ ] T068 Run the full quickstart.md verification procedure (V1–V10) against a deployed GitHub Pages build; record observed numbers (time-to-first-stars, fps desktop, fps mobile, input latency p95) in `specs/001-sky-viewer-mvp/verification-results.md`. Matches Principle V validation.
-- [ ] T069 Update the top-level [README.md](../../README.md) with a short "how to run" + "what it is" blurb and a link to the deployed site. Matches the constitution sync-impact follow-up.
+- [X] T069 Update the top-level [README.md](../../README.md) with a short "how to run" + "what it is" blurb and a link to the deployed site. Matches the constitution sync-impact follow-up.
 
 ---
 
@@ -278,3 +278,13 @@ With three developers: A on US1, B on US2, C on US3 after Foundational is merged
 - Astronomical accuracy is verified by comparing to Stellarium-derived fixtures on every test run; SC-006 is enforced as a CI gate, not a manual check.
 - Commit after each task or logical group; each checkpoint (end of a phase) is a natural PR boundary.
 - Do not break previous user stories when adding a new one — the e2e suite for all completed stories runs on every PR.
+
+---
+
+## Completion Status (2026-04-17)
+
+**54 done, 15 remaining.**
+
+Tasks NOT done: T031, T033, T034, T035, T045, T046, T047, T048, T054, T055, T056, T064, T065, T066, T068.
+
+Tests: 147/147 unit pass, 5/5 E2E pass on Chromium. `tsc --noEmit` clean. `npm run build` succeeds within payload budgets.
