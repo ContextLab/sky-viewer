@@ -191,3 +191,83 @@ button[aria-pressed="true"] {
     transition-duration: 0.01ms !important;
   }
 }
+
+/* T057 — Compass widget. */
+.compass {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.55rem 0.75rem;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.compass .compass-svg {
+  display: block;
+  touch-action: none;
+  cursor: grab;
+  border-radius: 50%;
+}
+
+.compass .compass-svg:active {
+  cursor: grabbing;
+}
+
+.compass .compass-svg:focus-visible {
+  outline: none;
+  box-shadow: var(--ring);
+}
+
+.compass .compass-label {
+  pointer-events: none;
+  font-family: inherit;
+}
+
+.compass-readout {
+  font-variant-numeric: tabular-nums;
+  font-size: var(--fs-sm);
+  color: var(--fg-muted);
+}
+
+/* T058 — FOV control indicator. */
+.fov-control {
+  display: inline-flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  min-width: 9rem;
+  padding: 0.55rem 0.75rem;
+}
+
+.fov-control .fov-readout {
+  font-variant-numeric: tabular-nums;
+  color: var(--fg);
+  font-size: var(--fs-sm);
+}
+
+.fov-control .fov-bar {
+  position: relative;
+  width: 100%;
+  height: 6px;
+  border-radius: 3px;
+  background: linear-gradient(
+    to right,
+    rgba(245, 215, 110, 0.55) 0%,
+    rgba(255, 255, 255, 0.18) 100%
+  );
+  border: 1px solid var(--ui-border);
+}
+
+.fov-control .fov-bar-marker {
+  --fov-pct: 50%;
+  position: absolute;
+  top: 50%;
+  left: var(--fov-pct);
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--accent);
+  border: 1px solid rgba(0, 0, 0, 0.6);
+  transform: translate(-50%, -50%);
+  box-shadow: 0 0 0 2px rgba(5, 7, 15, 0.6);
+}
