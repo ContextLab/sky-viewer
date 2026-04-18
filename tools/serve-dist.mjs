@@ -1,7 +1,7 @@
 // Preview server for `npm run preview` (used by Playwright).
 // Serves dist/ at http://localhost:4173.
 import { createServer } from "node:http";
-import { createReadStream, existsSync } from "node:fs";
+import { createReadStream, existsSync, statSync } from "node:fs";
 import { resolve } from "node:path";
 
 const DIST = resolve(process.cwd(), "dist");
@@ -26,6 +26,26 @@ const server = createServer((req, res) => {
   if (!full.startsWith(DIST) || !existsSync(full)) {
     res.statusCode = 404;
     res.end("not found");
+    return;
+  }
+  try {
+    const st = statSync(full);
+    if (st.isDirectory()) {
+      // Serve index.html from a directory, like most static servers.
+      const idx = resolve(full, "index.html");
+      if (!existsSync(idx)) {
+        res.statusCode = 404;
+        res.end("not found");
+        return;
+      }
+      // Fall through by resolving to the index.
+      res.setHeader("Content-Type", TYPES.html);
+      createReadStream(idx).pipe(res);
+      return;
+    }
+  } catch {
+    res.statusCode = 500;
+    res.end("stat failed");
     return;
   }
   const ext = (filePath.split(".").pop() || "").toLowerCase();
