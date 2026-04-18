@@ -9,6 +9,12 @@
 // All three fragment shaders output into a single RGBA framebuffer
 // with additive blending (for stars / planets) or straight alpha (for
 // lines), composited over `uBackground` cleared at frame start.
+//
+// The ground pass (GROUND_VERT / GROUND_FRAG) runs FIRST to paint the
+// horizon-and-below region; its noise helpers are shared with the
+// Canvas2D fallback via src/render/noise.ts — see GROUND_NOISE_GLSL.
+
+import { GROUND_NOISE_GLSL } from '../noise';
 
 // A mini GLSL helper shared by every vertex shader. Produces a gl_Position
 // and a per-vertex visibility flag (w = 0 → clipped) matching the TS
@@ -232,5 +238,86 @@ void main() {
   float halo = smoothstep(1.0, 0.85, r * 1.05);
   float alpha = core * halo;
   fragColor = vec4(vColor, alpha) * vMagnitudeFalloff;
+}
+`;
+
+/* ===========================================================
+ * GROUND PASS (stylized horizon + gradient below)
+ * ===========================================================
+ *
+ * A single full-screen quad whose fragment shader:
+ *   - Computes the per-fragment azimuth from its NDC x.
+ *   - Perturbs the horizon NDC y by a 1-D value-noise silhouette.
+ *   - Discards fragments above the silhouette (sky shows through).
+ *   - Below the silhouette, blends two earth tones vertically.
+ *   - Strokes a thin haze line at the smooth horizon NDC y.
+ *
+ * Runs BEFORE stars / lines / planets. See renderer.ts.
+ */
+
+export const GROUND_VERT = /* glsl */ `#version 300 es
+precision highp float;
+
+// Per-vertex corner of a full-screen quad in NDC, −1..+1.
+in vec2 aCorner;
+
+out vec2 vNdc;
+
+void main() {
+  vNdc = aCorner;
+  gl_Position = vec4(aCorner, 0.0, 1.0);
+}
+`;
+
+export const GROUND_FRAG = /* glsl */ `#version 300 es
+precision highp float;
+${GROUND_NOISE_GLSL}
+
+in vec2 vNdc;
+
+uniform float uHorizonY;       // NDC y of the smooth horizon line.
+uniform float uBearingRad;     // Camera heading; shifts the silhouette.
+uniform float uFovRad;         // Horizontal field of view.
+uniform float uAspect;         // canvas width / height.
+uniform float uSilhouetteSeed; // Stable per-view-seed (bearing-driven).
+uniform float uAmplitudeNdc;   // Silhouette vertical amplitude (NDC units).
+uniform vec3 uEarthNear;       // Ground colour near the horizon (0..1).
+uniform vec3 uEarthFar;        // Ground colour at the screen bottom (0..1).
+uniform vec3 uHazeRgb;         // Haze-line colour (0..1).
+uniform float uHazeAlpha;      // Haze-line opacity (0..1).
+uniform float uHazeHalfPx;     // Half-width of the haze line, in pixels.
+uniform float uCanvasHeightPx; // Drawing-buffer height in pixels (for px→NDC).
+
+out vec4 fragColor;
+
+void main() {
+  // Per-fragment azimuth offset from the view centre. vNdc.x spans
+  // [−1, +1] across the screen, and the horizontal field of view is
+  // uFovRad, so the angular half-width per NDC-unit is uFovRad/2.
+  float az = uBearingRad + vNdc.x * (uFovRad * 0.5);
+
+  // Silhouette NDC y: horizon shifted by noise × amplitude.
+  float silY = uHorizonY + horizonSilhouette(az, uSilhouetteSeed) * uAmplitudeNdc;
+
+  // Above silhouette → let the sky clear-colour show through.
+  if (vNdc.y > silY) {
+    discard;
+  }
+
+  // Vertical gradient from near-horizon colour (at silY) down to
+  // far-earth colour at the screen bottom (NDC y = −1).
+  float denom = max(silY + 1.0, 1e-4);
+  float t = clamp((silY - vNdc.y) / denom, 0.0, 1.0);
+  vec3 ground = mix(uEarthNear, uEarthFar, t);
+
+  // Haze line at the smooth horizon (uHorizonY), a thin band whose
+  // half-width is uHazeHalfPx in pixels. Convert pixels to NDC y.
+  float ndcPerPx = 2.0 / uCanvasHeightPx;
+  float halfBand = uHazeHalfPx * ndcPerPx;
+  float dist = abs(vNdc.y - uHorizonY);
+  float haze = smoothstep(halfBand, 0.0, dist) * uHazeAlpha;
+  vec3 colour = mix(ground, uHazeRgb, haze);
+
+  fragColor = vec4(colour, 1.0);
 }
 `;

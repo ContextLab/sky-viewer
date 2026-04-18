@@ -12,6 +12,7 @@ import { createCanvas2DRenderer } from './canvas2d/fallback';
 import { StarPass } from './webgl2/star-pass';
 import { PlanetPass } from './webgl2/planet-pass';
 import { LinePass } from './webgl2/line-pass';
+import { GroundPass } from './webgl2/ground-pass';
 
 const DEG2RAD = Math.PI / 180;
 
@@ -53,6 +54,7 @@ export function createRenderer(canvas: HTMLCanvasElement): Renderer {
  * through `createRenderer`.
  */
 function createWebGL2Renderer(canvas: HTMLCanvasElement, gl: WebGL2RenderingContext): Renderer {
+  const groundPass = new GroundPass(gl);
   const starPass = new StarPass(gl);
   const linePass = new LinePass(gl);
   const planetPass = new PlanetPass(gl);
@@ -94,7 +96,20 @@ function createWebGL2Renderer(canvas: HTMLCanvasElement, gl: WebGL2RenderingCont
     gl.clearColor(bg.r / 255, bg.g / 255, bg.b / 255, 1.0);
     gl.clear(gl.COLOR_BUFFER_BIT);
 
-    // 2. Additive blending for stars and planets (so overlapping
+    // 2. Ground pass FIRST — paints the stylized horizon silhouette
+    //    and earth-tone gradient below it. Writes opaque RGB so
+    //    subsequent additive stars/planets above the silhouette are
+    //    untouched (discarded fragments leave the sky clear-colour).
+    gl.disable(gl.BLEND);
+    groundPass.draw(state, {
+      bearingRad,
+      pitchRad,
+      fovRad,
+      aspect,
+      canvasHeightPx: canvas.height,
+    });
+
+    // 3. Additive blending for stars and planets (so overlapping
     //    discs brighten rather than cut out). Constellation lines use
     //    the same state — straight rgba over the background looks
     //    fine because the alpha channel is low.
@@ -111,7 +126,7 @@ function createWebGL2Renderer(canvas: HTMLCanvasElement, gl: WebGL2RenderingCont
       canvasPx,
     };
 
-    // 3. Constellation lines first so stars draw on top of them.
+    // 4. Constellation lines first so stars draw on top of them.
     linePass.update(obs, datasets.constellations, datasets.stars, state.utcMs);
     linePass.draw({
       bearingRad,
@@ -121,16 +136,17 @@ function createWebGL2Renderer(canvas: HTMLCanvasElement, gl: WebGL2RenderingCont
       color: [0.7, 0.78, 0.95, 0.35],
     });
 
-    // 4. Stars.
+    // 5. Stars.
     starPass.update(obs, datasets.stars, state.utcMs);
     starPass.draw(commonUniforms);
 
-    // 5. Planets (drawn last so they sit atop stars).
+    // 6. Planets (drawn last so they sit atop stars).
     planetPass.update(state, canvas.width);
     planetPass.draw(commonUniforms);
   }
 
   function dispose(): void {
+    groundPass.dispose();
     starPass.dispose();
     linePass.dispose();
     planetPass.dispose();

@@ -194,3 +194,20 @@ export function starColorFromBvIndex(bvIndexHundredths: number): { r: number; g:
 export function isAboveHorizon(altDeg: number): boolean {
   return altDeg > -2;
 }
+
+/**
+ * NDC y-coordinate of the true horizon (altRad = 0) for the current
+ * view. Derived by substituting altRad = 0 into the y projection in
+ * `projectAltAzToNdc`:
+ *
+ *   y = (0 − pitchRad) / (fovRad / (2·aspect))
+ *     = −pitchRad · (2·aspect) / fovRad
+ *
+ * This is the single source of truth shared by both the WebGL2 ground
+ * pass and the Canvas2D fallback so they agree on where the horizon
+ * line sits on-screen.
+ */
+export function horizonNdcY(pitchRad: number, fovRad: number, aspect: number): number {
+  const halfFov = fovRad * 0.5;
+  return -pitchRad / (halfFov / aspect);
+}
