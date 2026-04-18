@@ -1,0 +1,850 @@
+
+:root {
+  color-scheme: dark;
+
+  /* Sky palette */
+  --bg-night:        #04060d;
+  --bg-astronomical: #090e26;
+  --bg-nautical:     #0e2257;
+  --bg-civil:        #243e80;
+  --bg-day:          #7aa8d8;
+
+  /* Ground / terrain palette — a "dark earth" atmospheric scheme.
+     Kept mostly dark so the sky remains the visual hero. The ground
+     pass (src/render/webgl2/shaders.ts::GROUND_FRAG + Canvas2D
+     fallback) derives runtime values from the current sky bg, so
+     these tokens are reference anchors rather than the literal
+     rendered colours. */
+  --ground-horizon:  #361f16;   /* warm terracotta (near-horizon glow) */
+  --ground-mid:      #141210;   /* cool desaturated loam (mid band)   */
+  --ground-far:      #060504;   /* near-black (screen bottom)         */
+  --ground-pebble:   rgba(210, 180, 140, 0.35); /* faint pebble tint  */
+
+  /* Foreground */
+  --fg:              #dde4f0;
+  --fg-muted:        #7b889e;
+  --fg-dim:          #4a5568;
+
+  /* Accent — amber, used ONLY for directional markers and active states */
+  --accent:          #f0c040;
+  --accent-glow:     rgba(240, 192, 64, 0.18);
+  --accent-active:   rgba(240, 192, 64, 0.15);
+
+  /* Danger */
+  --danger:          #e8745a;
+  --danger-bg:       rgba(232, 116, 90, 0.10);
+
+  /* Panel surfaces */
+  --ui-bg:           rgba(8, 12, 24, 0.80);
+  --ui-bg-hover:     rgba(14, 20, 38, 0.88);
+  --ui-border:       rgba(255, 255, 255, 0.09);
+  --ui-border-hover: rgba(255, 255, 255, 0.18);
+
+  /* Input surfaces */
+  --input-bg:        rgba(255, 255, 255, 0.05);
+  --input-bg-hover:  rgba(255, 255, 255, 0.09);
+
+  /* Focus ring */
+  --focus:           #f0c040;
+  --ring:            0 0 0 2px var(--bg-night), 0 0 0 4px var(--focus);
+
+  /* Spacing scale */
+  --sp-1: 4px;
+  --sp-2: 8px;
+  --sp-3: 12px;
+  --sp-4: 16px;
+  --sp-5: 24px;
+  --sp-6: 32px;
+
+  /* Panel geometry */
+  --panel-pad-x:  var(--sp-3);
+  --panel-pad-y:  var(--sp-3);
+  --panel-radius: 10px;
+  --panel-blur:   12px;
+  --panel-shadow: 0 2px 16px rgba(0, 0, 0, 0.45), 0 1px 0 rgba(255,255,255,0.04) inset;
+
+  /* Typography */
+  --font-sans: 'DM Sans', system-ui, -apple-system, sans-serif;
+  --font-mono: 'DM Mono', 'SF Mono', 'Fira Mono', monospace;
+
+  --fs-xs:  0.70rem;   /* 11.2px @ 16px root */
+  --fs-sm:  0.78rem;   /* 12.5px */
+  --fs-md:  0.875rem;  /* 14px   */
+  --fs-lg:  1.0rem;    /* 16px   */
+
+  /* Label tracking */
+  --ls-label: 0.06em;
+  --ls-readout: 0.02em;
+
+  /* Transition */
+  --t-fast:  120ms ease;
+  --t-mid:   220ms ease;
+}
+
+*, *::before, *::after {
+  box-sizing: border-box;
+}
+
+html, body {
+  margin: 0;
+  padding: 0;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: var(--bg-night);
+  color: var(--fg);
+  font-family: var(--font-sans);
+  font-size: var(--fs-md);
+  font-weight: 400;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+main#app {
+  position: relative;
+  width: 100%;
+  height: 100dvh;
+  overflow: hidden;
+  touch-action: none;
+}
+
+canvas#sky {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+  background: var(--bg-night);
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+:focus-visible {
+  outline: none;
+  box-shadow: var(--ring);
+  border-radius: calc(var(--panel-radius) - 2px);
+}
+
+.overlay {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  display: grid;
+  grid-template-rows: auto 1fr auto;
+  padding: clamp(var(--sp-2), 2vw, var(--sp-5));
+  gap: var(--sp-2);
+}
+
+/* Only actual interactive controls receive pointer events. The top-bar /
+   middle / bottom-bar wrapper divs stay pointer-events:none so drag
+   gestures on the sky canvas pass through to src/ui/sky-gestures.ts. */
+.overlay .panel,
+.overlay button,
+.overlay select,
+.overlay input,
+.overlay .layer-toggles,
+.overlay .banner,
+.overlay .night-mode-toggle,
+.overlay .red-light-mode,
+.overlay .map-picker-trigger,
+.overlay .map-picker-dialog {
+  pointer-events: auto;
+}
+
+.panel {
+  position: relative;
+  z-index: 15;
+  background: var(--ui-bg);
+  border: 1px solid var(--ui-border);
+  border-radius: var(--panel-radius);
+  padding: var(--panel-pad-y) var(--panel-pad-x);
+  backdrop-filter: blur(var(--panel-blur)) saturate(1.4);
+  -webkit-backdrop-filter: blur(var(--panel-blur)) saturate(1.4);
+  box-shadow: var(--panel-shadow);
+  /* Auto-hide: panels dim when the user is idle (hover-capable devices only) */
+  transition: opacity var(--t-mid);
+}
+
+.row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-2);
+}
+
+label {
+  display: inline-flex;
+  flex-direction: column;
+  gap: var(--sp-1);
+  font-size: var(--fs-xs);
+  font-weight: 500;
+  letter-spacing: var(--ls-label);
+  text-transform: uppercase;
+  color: var(--fg-muted);
+}
+
+.readout {
+  font-family: var(--font-mono);
+  font-size: var(--fs-sm);
+  font-weight: 400;
+  letter-spacing: var(--ls-readout);
+  color: var(--fg-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+input[type="date"],
+input[type="time"],
+input[type="text"],
+input[type="number"],
+select {
+  background: var(--input-bg);
+  color: var(--fg);
+  border: 1px solid var(--ui-border);
+  border-radius: 6px;
+  padding: var(--sp-1) var(--sp-2);
+  font-size: var(--fs-md);
+  font-family: var(--font-sans);
+  min-height: 32px;
+  transition: border-color var(--t-fast), background var(--t-fast);
+}
+
+input[type="date"]:hover,
+input[type="time"]:hover,
+input[type="text"]:hover,
+input[type="number"]:hover,
+select:hover {
+  border-color: var(--ui-border-hover);
+  background: var(--input-bg-hover);
+}
+
+/* Calendar/clock icon colour on webkit */
+input[type="date"]::-webkit-calendar-picker-indicator,
+input[type="time"]::-webkit-calendar-picker-indicator {
+  filter: invert(0.6);
+  cursor: pointer;
+}
+
+button {
+  background: var(--input-bg);
+  color: var(--fg);
+  border: 1px solid var(--ui-border);
+  border-radius: 6px;
+  padding: var(--sp-1) var(--sp-3);
+  font-size: var(--fs-md);
+  font-family: var(--font-sans);
+  font-weight: 500;
+  min-height: 32px;
+  cursor: pointer;
+  letter-spacing: 0.01em;
+  transition: background var(--t-fast), border-color var(--t-fast);
+}
+
+button:hover {
+  background: var(--input-bg-hover);
+  border-color: var(--ui-border-hover);
+}
+
+button[aria-pressed="true"] {
+  background: var(--accent-active);
+  border-color: var(--accent);
+  color: var(--fg);
+}
+
+.banner {
+  position: absolute;
+  top: var(--sp-3);
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(200, 60, 40, 0.88);
+  color: #fff;
+  padding: var(--sp-2) var(--sp-4);
+  border-radius: 8px;
+  font-size: var(--fs-sm);
+  max-width: min(92vw, 40rem);
+  z-index: 20;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.45);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+}
+
+.banner[hidden] {
+  display: none;
+}
+
+.top-bar {
+  display: flex;
+  justify-content: space-between;
+  align-items: stretch;
+  gap: var(--sp-2);
+  min-height: 0;
+}
+
+/* Unified top-bar widget height. The DATE/TIME inputs are ~56 px tall
+   including padding; we target ~64 px so the compass/pitch/FOV/night-
+   mode controls all read as one coherent instrument strip. */
+:root {
+  --top-widget-h: 64px;
+}
+
+.top-bar .top-left {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: stretch;
+  gap: var(--sp-2);
+}
+
+.top-bar .top-right {
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: stretch;
+  gap: var(--sp-2);
+  flex-shrink: 0;
+}
+
+/* Every top-bar panel shares the unified height on hover-capable (non-
+   mobile) layouts. Mobile layout overrides this below. */
+.top-bar .panel {
+  min-height: var(--top-widget-h);
+}
+
+.bottom-bar {
+  display: flex;
+  justify-content: center;
+}
+
+.panel.compass,
+.panel.pitch-control,
+.panel.fov-control {
+  /* Uniform panel treatment */
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--sp-1);
+  padding: var(--sp-2) var(--sp-3);
+}
+
+.compass {
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+/* Scale the 110×110 compass SVG down to 44×44 (unified instrument size).
+   The SVG has a viewBox so the rose + labels rescale cleanly. */
+.compass .compass-svg {
+  display: block;
+  touch-action: none;
+  cursor: grab;
+  border-radius: 50%;
+  transition: opacity var(--t-fast);
+  width: 44px;
+  height: 44px;
+}
+
+.compass .compass-svg:active {
+  cursor: grabbing;
+}
+
+.compass .compass-svg:focus-visible {
+  outline: none;
+  box-shadow: var(--ring);
+}
+
+.compass .compass-label {
+  pointer-events: none;
+  font-family: var(--font-sans);
+}
+
+.compass-readout {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  font-size: var(--fs-xs);
+  color: var(--fg-muted);
+  letter-spacing: var(--ls-readout);
+  text-align: center;
+  white-space: nowrap;
+  line-height: 1.1;
+}
+
+.fov-control {
+  min-width: 120px;
+  align-items: stretch !important;
+  gap: var(--sp-1) !important;
+  justify-content: center;
+}
+
+.fov-control .fov-readout {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  font-size: var(--fs-xs);
+  color: var(--fg);
+  letter-spacing: var(--ls-readout);
+  text-align: center;
+  line-height: 1.1;
+}
+
+.fov-control .fov-bar {
+  position: relative;
+  width: 100%;
+  height: 10px;
+  min-height: 10px;
+  border-radius: 5px;
+  background: rgba(255, 255, 255, 0.10);
+  border: 1px solid var(--ui-border);
+  cursor: pointer;
+  touch-action: none;
+}
+
+.fov-control .fov-bar:hover {
+  border-color: var(--ui-border-hover);
+  background: rgba(255, 255, 255, 0.14);
+}
+
+.fov-control .fov-bar:focus-visible {
+  outline: none;
+  box-shadow: var(--ring);
+}
+
+.fov-control .fov-bar-marker {
+  --fov-pct: 50%;
+  position: absolute;
+  top: 50%;
+  left: var(--fov-pct);
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--accent);
+  border: 1.5px solid var(--bg-night);
+  transform: translate(-50%, -50%);
+  box-shadow: 0 0 6px var(--accent-glow);
+  pointer-events: none;
+}
+
+.pitch-control {
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.pitch-control .pitch-svg {
+  display: block;
+  touch-action: none;
+  cursor: grab;
+  border-radius: 4px;
+  /* Unified instrument scale: the 44×110 SVG shrinks to 20×44 so it
+     reads as a compact slider alongside the compass dial. The viewBox
+     preserves the tick layout. */
+  width: 20px;
+  height: 44px;
+}
+
+.pitch-control .pitch-svg:active {
+  cursor: grabbing;
+}
+
+.pitch-control .pitch-svg:focus-visible {
+  outline: none;
+  box-shadow: var(--ring);
+}
+
+.pitch-control .pitch-label {
+  pointer-events: none;
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+.pitch-readout {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  font-size: var(--fs-xs);
+  color: var(--fg-muted);
+  letter-spacing: var(--ls-readout);
+  text-align: center;
+  white-space: nowrap;
+  line-height: 1.1;
+}
+
+.layer-toggles {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: var(--sp-2);
+  padding: var(--sp-2) var(--sp-3);
+  min-width: 100px;
+}
+
+.layer-toggles .layer-toggles-summary {
+  width: 100%;
+  text-align: left;
+  font-size: var(--fs-sm);
+  font-weight: 500;
+  letter-spacing: 0.03em;
+  padding: var(--sp-1) var(--sp-2);
+  color: var(--fg);
+}
+
+.layer-toggles .layer-toggles-summary::before {
+  content: "▸ ";
+  opacity: 0.55;
+}
+
+.layer-toggles .layer-toggles-summary[aria-expanded="true"]::before {
+  content: "▾ ";
+  opacity: 0.75;
+}
+
+.layer-toggles .layer-toggles-group {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-1);
+  padding: var(--sp-1) var(--sp-2);
+}
+
+.layer-toggles .layer-toggles-group[hidden] {
+  display: none;
+}
+
+.layer-toggles .layer-toggles-row {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: var(--sp-2);
+  font-size: var(--fs-sm);
+  color: var(--fg);
+  cursor: pointer;
+}
+
+.layer-toggles .layer-toggles-checkbox {
+  min-width: 14px;
+  min-height: 14px;
+  accent-color: var(--accent);
+}
+
+.layer-toggles .layer-toggles-label {
+  flex: 1;
+}
+
+/* Object labels overlay: below UI panels but above the canvas.
+   Panels get z-index: 15 via the .panel rule below; this keeps labels
+   behind widget chrome so they never obscure controls. */
+.object-labels {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  overflow: hidden;
+  z-index: 5;
+}
+
+.object-labels .object-labels-layer {
+  position: absolute;
+  inset: 0;
+}
+
+/* Base label — star names */
+.object-labels .object-labels-item {
+  position: absolute;
+  top: 0;
+  left: 0;
+  white-space: nowrap;
+  font-family: var(--font-sans);
+  font-size: var(--fs-xs);
+  font-weight: 400;
+  line-height: 1;
+  padding: 1px 4px;
+  border-radius: 3px;
+  color: rgba(200, 210, 235, 0.80);
+  background: rgba(4, 6, 13, 0.50);
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.90);
+  pointer-events: none;
+  letter-spacing: 0.01em;
+}
+
+/* Planet names — slightly larger, accent-adjacent colour, bold */
+.object-labels .object-labels-planet {
+  font-size: var(--fs-sm);
+  font-weight: 600;
+  color: var(--accent);
+  background: rgba(4, 6, 13, 0.55);
+  letter-spacing: 0.02em;
+}
+
+/* Constellation names — the hierarchy anchor. Larger, caps-like, not italic */
+.object-labels .object-labels-constellation {
+  font-family: var(--font-sans);
+  font-size: var(--fs-sm);
+  font-weight: 300;
+  letter-spacing: 0.10em;
+  text-transform: uppercase;
+  font-style: normal;
+  color: rgba(180, 200, 240, 0.65);
+  background: rgba(4, 6, 13, 0.30);
+  text-shadow: 0 1px 4px rgba(0, 0, 0, 0.95), 0 0 12px rgba(4, 6, 13, 0.70);
+  padding: 2px 5px;
+}
+
+/* Star names — smallest, dimmest */
+.object-labels .object-labels-star {
+  color: rgba(215, 220, 240, 0.70);
+  background: rgba(4, 6, 13, 0.40);
+}
+
+/* Hover/tap tooltip */
+.object-labels .object-labels-tooltip {
+  position: absolute;
+  top: 0;
+  left: 0;
+  white-space: nowrap;
+  font-family: var(--font-sans);
+  font-size: var(--fs-sm);
+  line-height: 1.4;
+  padding: var(--sp-2) var(--sp-3);
+  border-radius: 6px;
+  background: rgba(8, 12, 24, 0.94);
+  color: var(--fg);
+  border: 1px solid var(--ui-border-hover);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.55);
+  pointer-events: none;
+  z-index: 6;
+}
+
+.object-labels .object-labels-tooltip[hidden] {
+  display: none;
+}
+
+/* "Live Mode" (GPS + compass AR) is only meaningful on devices with
+   real accelerometer / magnetometer / GPS. Hide on anything that looks
+   like a desktop: hover-capable AND fine pointer AND viewport > 768 px.
+   Real phones and tablets fail one of those checks (even iPad Pro with
+   a Magic Keyboard still exposes touch as the primary pointer). */
+@media (hover: hover) and (pointer: fine) and (min-width: 769px) {
+  .night-mode {
+    display: none !important;
+  }
+}
+
+.night-mode {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: var(--sp-2);
+  padding: var(--sp-2) var(--sp-3);
+  min-width: 100px;
+  position: relative;
+}
+
+.night-mode .night-mode-button {
+  background: var(--input-bg);
+  color: var(--fg);
+  border: 1px solid var(--ui-border);
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  padding: var(--sp-1) var(--sp-3);
+  min-height: 32px;
+  white-space: nowrap;
+}
+
+.night-mode .night-mode-button:hover {
+  background: var(--input-bg-hover);
+  border-color: var(--ui-border-hover);
+}
+
+.night-mode .night-mode-button[aria-pressed="true"] {
+  background: var(--accent-active);
+  border-color: var(--accent);
+}
+
+.night-mode .night-mode-status {
+  font-family: var(--font-mono);
+  font-size: var(--fs-xs);
+  color: var(--accent);
+  font-weight: 400;
+  letter-spacing: 0.03em;
+  padding: 0 var(--sp-1);
+}
+
+.night-mode .night-mode-status[hidden] {
+  display: none;
+}
+
+.night-mode .night-mode-calibration {
+  font-family: var(--font-sans);
+  font-size: var(--fs-xs);
+  color: var(--fg-muted);
+  line-height: 1.4;
+  padding: var(--sp-1) var(--sp-2);
+  border-left: 2px solid var(--danger);
+  background: var(--danger-bg);
+  border-radius: 0 4px 4px 0;
+}
+
+.night-mode .night-mode-calibration[hidden] {
+  display: none;
+}
+
+.night-mode .night-mode-toast {
+  position: absolute;
+  top: calc(100% + var(--sp-2));
+  right: 0;
+  background: rgba(180, 50, 30, 0.93);
+  color: #fff;
+  padding: var(--sp-2) var(--sp-3);
+  border-radius: 6px;
+  font-size: var(--fs-sm);
+  max-width: 18rem;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.55);
+  z-index: 15;
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+}
+
+.night-mode .night-mode-toast[hidden] {
+  display: none;
+}
+
+@media (hover: hover) {
+  .overlay.ui-idle .panel {
+    opacity: 0.35;
+  }
+  .overlay.ui-idle .panel:hover,
+  .overlay.ui-idle .panel:focus-within {
+    opacity: 1;
+  }
+  .panel {
+    transition: opacity 600ms ease;
+  }
+}
+
+@media (max-width: 600px) {
+  .top-bar {
+    align-items: flex-start;
+    flex-wrap: nowrap;
+  }
+
+  .top-bar .top-right {
+    /* Becomes a fixed vertical dock on the right edge */
+    position: fixed;
+    top: clamp(var(--sp-2), 2vw, var(--sp-4));
+    right: clamp(var(--sp-2), 2vw, var(--sp-4));
+    flex-direction: column;
+    align-items: flex-end;
+    flex-wrap: nowrap;
+    gap: var(--sp-2);
+    max-width: 140px;
+    z-index: 10;
+    pointer-events: auto;
+  }
+
+    .top-bar .top-left {
+    max-width: calc(100vw - 160px);
+  }
+
+  /* All instrument panels in the right dock go full-width */
+  .top-bar .top-right .panel {
+    width: 100%;
+  }
+
+  /* Compass and pitch SVGs stay their intrinsic sizes */
+  .panel.compass,
+  .panel.pitch-control {
+    align-items: center;
+  }
+
+  /* FOV bar needs to fill its panel */
+  .fov-control {
+    min-width: 90px;
+  }
+
+  /* Readouts inside instrument panels: keep but clip if needed */
+  .compass-readout,
+  .pitch-readout {
+    font-size: var(--fs-xs);
+    max-width: 120px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* ----------------------------------------------------------------------
+   Red Light Mode — astronomer's dark-adaptation overlay.
+   A full-screen multiply-blend veil that forces every rendered pixel
+   toward the red channel while letting the UI stay visible. See
+   src/ui/red-light-mode.ts for the logic that toggles `.red-veil`'s
+   visibility and adds `.red-light-active` to <body>.
+   ---------------------------------------------------------------------- */
+
+.red-light-mode {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: var(--sp-2);
+  padding: var(--sp-2) var(--sp-3);
+  min-width: 100px;
+  position: relative;
+}
+
+.red-light-mode .red-light-mode-button {
+  background: var(--input-bg);
+  color: var(--fg);
+  border: 1px solid var(--ui-border);
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  padding: var(--sp-1) var(--sp-3);
+  min-height: 32px;
+  white-space: nowrap;
+}
+
+.red-light-mode .red-light-mode-button:hover {
+  background: var(--input-bg-hover);
+  border-color: var(--ui-border-hover);
+}
+
+.red-light-mode .red-light-mode-button[aria-pressed="true"] {
+  background: rgba(200, 20, 20, 0.22);
+  border-color: #d64242;
+  color: #ffe8e8;
+}
+
+/* The veil itself. Fixed to cover the entire viewport — including the
+   canvas and every overlay — so no green/blue photons escape. Pointer
+   events pass through so the underlying UI remains interactive.
+   mix-blend-mode: multiply forces each channel of the underlying pixel
+   to be multiplied by the veil colour: with a saturated #ff0000 fill
+   at high opacity, G and B are driven to near-zero while R passes. */
+.red-veil {
+  position: fixed;
+  inset: 0;
+  background: #ff0000;
+  mix-blend-mode: multiply;
+  opacity: 0.85;
+  pointer-events: none;
+  z-index: 10000;
+  /* Stack above any existing canvas, overlay, banner, map dialog. */
+}
+
+.red-veil[hidden] {
+  display: none;
+}
+
+/* When active, also dim the accent/focus glow so the UI doesn't fight
+   the red palette. These are cosmetic — the veil does the heavy lifting. */
+body.red-light-active {
+  /* Subtle tint behind the veil in case blend-mode isn't supported. */
+  background: #100000;
+}

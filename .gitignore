@@ -1,0 +1,31 @@
+node_modules/
+dist/
+coverage/
+*.log
+.env
+.env.*
+.DS_Store
+Thumbs.db
+*.tmp
+*.swp
+.vscode/
+.idea/
+
+# Raw downloaded datasets (regenerate via `npm run build:data`)
+# The processed outputs (data/stars.bin, data/*.json, data/world.svg) ARE committed.
+data/raw/
+
+# Playwright
+test-results/
+playwright-report/
+blob-report/
+.playwright/
+
+# TypeScript
+*.tsbuildinfo
+
+# Lighthouse CI
+.lighthouseci/
+
+# Harness/tooling scratch
+.omc/

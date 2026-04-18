@@ -1,0 +1,202 @@
+{
+  "name": "longyearbyen-midnight-sun",
+  "observation": {
+    "utcInstant": "2020-06-20T23:00:00.000Z",
+    "localDate": "2020-06-21",
+    "localTime": "01:00",
+    "timeZone": "Europe/Oslo",
+    "utcOffsetMinutes": 120,
+    "location": {
+      "lat": 78.2,
+      "lon": 15.6,
+      "label": "Longyearbyen, Svalbard (midnight sun)"
+    },
+    "bearingDeg": 0,
+    "fovDeg": 90
+  },
+  "stars": [
+    {
+      "name": "Polaris",
+      "raDeg": 37.955,
+      "decDeg": 89.264,
+      "expected": {
+        "altDegGeometric": 77.73774069773093,
+        "altDegApparent": 77.74139695640848,
+        "azDeg": 2.203472877586478
+      }
+    },
+    {
+      "name": "Vega",
+      "raDeg": 279.234,
+      "decDeg": 38.784,
+      "expected": {
+        "altDegGeometric": 50.41775571734205,
+        "altDegApparent": 50.43171806065663,
+        "azDeg": 168.7292947053974
+      }
+    },
+    {
+      "name": "Sirius",
+      "raDeg": 101.287,
+      "decDeg": -16.716,
+      "expected": {
+        "altDegGeometric": -28.290785620866277,
+        "altDegApparent": -27.842471214716383,
+        "azDeg": 347.69149976713635
+      }
+    },
+    {
+      "name": "Betelgeuse",
+      "raDeg": 88.793,
+      "decDeg": 7.407,
+      "expected": {
+        "altDegGeometric": -4.388716115336712,
+        "altDegApparent": -3.7667543502966305,
+        "azDeg": 1.1360532527741611
+      }
+    },
+    {
+      "name": "Rigel",
+      "raDeg": 78.634,
+      "decDeg": -8.202,
+      "expected": {
+        "altDegGeometric": -19.739896374529362,
+        "altDegApparent": -19.229460178739227,
+        "azDeg": 11.925002026490858
+      }
+    },
+    {
+      "name": "Arcturus",
+      "raDeg": 213.915,
+      "decDeg": 19.182,
+      "expected": {
+        "altDegGeometric": 25.342913118146043,
+        "altDegApparent": 25.378266284856515,
+        "azDeg": 240.16397679625183
+      }
+    },
+    {
+      "name": "Capella",
+      "raDeg": 79.172,
+      "decDeg": 45.998,
+      "expected": {
+        "altDegGeometric": 34.38867154279992,
+        "altDegApparent": 34.41326900942788,
+        "azDeg": 8.958242047946442
+      }
+    },
+    {
+      "name": "Aldebaran",
+      "raDeg": 68.98,
+      "decDeg": 16.509,
+      "expected": {
+        "altDegGeometric": 5.493478543625906,
+        "altDegApparent": 5.643503680802771,
+        "azDeg": 20.12973900228559
+      }
+    },
+    {
+      "name": "Procyon",
+      "raDeg": 114.826,
+      "decDeg": 5.225,
+      "expected": {
+        "altDegGeometric": -5.532809341251774,
+        "altDegApparent": -4.919159357204478,
+        "azDeg": 335.0991327536768
+      }
+    },
+    {
+      "name": "Altair",
+      "raDeg": 297.696,
+      "decDeg": 8.868,
+      "expected": {
+        "altDegGeometric": 19.30547229691125,
+        "altDegApparent": 19.352880174106915,
+        "azDeg": 150.85139407847618
+      }
+    }
+  ],
+  "sun": {
+    "expected": {
+      "altDegGeometric": 11.636564801116023,
+      "altDegApparent": 11.714851402658823,
+      "azDeg": 0.14290033331186894,
+      "raHours": 6.003677505591805,
+      "decDeg": 23.436525899040497
+    }
+  },
+  "moon": {
+    "expected": {
+      "altDegGeometric": 11.34670494924373,
+      "altDegApparent": 11.426872226288438,
+      "azDeg": 4.042701586661443,
+      "phase": 0.001127201722806892,
+      "angularDiameterArcsec": 1841.614203917435
+    }
+  },
+  "planets": [
+    {
+      "name": "Mercury",
+      "expected": {
+        "altDegGeometric": 9.102100399756651,
+        "altDegApparent": 9.200245818761118,
+        "azDeg": 345.53181252324976,
+        "apparentMag": 2.94815913011529
+      }
+    },
+    {
+      "name": "Venus",
+      "expected": {
+        "altDegGeometric": 7.586668190175743,
+        "altDegApparent": 7.7018211050856,
+        "azDeg": 24.686618470993636,
+        "apparentMag": -4.483212583807299
+      }
+    },
+    {
+      "name": "Mars",
+      "expected": {
+        "altDegGeometric": -3.6641139253719928,
+        "altDegApparent": -3.0368879610748394,
+        "azDeg": 93.9202128922723,
+        "apparentMag": -0.33001165957568324
+      }
+    },
+    {
+      "name": "Jupiter",
+      "expected": {
+        "altDegGeometric": -10.767280589214423,
+        "altDegApparent": -10.191658781228824,
+        "azDeg": 154.55667361125052,
+        "apparentMag": -2.6810848233515037
+      }
+    },
+    {
+      "name": "Saturn",
+      "expected": {
+        "altDegGeometric": -10.15352723846074,
+        "altDegApparent": -9.573446542580783,
+        "azDeg": 148.9590213150454,
+        "apparentMag": 0.15757517124209386
+      }
+    },
+    {
+      "name": "Uranus",
+      "expected": {
+        "altDegGeometric": 6.957665485192024,
+        "altDegApparent": 7.081588573676143,
+        "azDeg": 51.2297640937962,
+        "apparentMag": 5.849620108935261
+      }
+    },
+    {
+      "name": "Neptune",
+      "expected": {
+        "altDegGeometric": -2.821081464731904,
+        "altDegApparent": -2.1877309110884227,
+        "azDeg": 98.84405676404141,
+        "apparentMag": 7.878278061600901
+      }
+    }
+  ]
+}

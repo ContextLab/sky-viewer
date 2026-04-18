@@ -1,0 +1,13 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm install *)",
+      "Bash(npx tsc *)",
+      "Bash(npx tsx *)",
+      "Bash(npx playwright *)"
+    ],
+    "additionalDirectories": [
+      "/Users/jmanning/sky-viewer/tools"
+    ]
+  }
+}
