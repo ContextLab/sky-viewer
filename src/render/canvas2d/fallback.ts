@@ -32,7 +32,7 @@ import {
   silhouetteSeed,
   SILHOUETTE_AMPLITUDE_NDC,
 } from '../webgl2/ground-pass';
-import { horizonSilhouette } from '../noise';
+import { horizonSilhouette, hash21, valueNoise1D } from '../noise';
 
 const DEG2RAD = Math.PI / 180;
 
@@ -41,16 +41,19 @@ const CANVAS2D_MAG_LIMIT = 4.5;
 
 /**
  * Paint the stylized ground for the Canvas2D fallback. Mirrors the
- * WebGL2 GROUND_FRAG: compute the horizon NDC y, convert to CSS
- * pixels, then walk an irregular polyline across the screen sampling
- * `horizonSilhouette()` at per-column azimuths. Fill below with a
- * linear gradient between `earthNear` and `earthFar`, then stroke a
- * thin haze band at the smooth horizon y.
+ * WebGL2 GROUND_FRAG: 2-octave fBm silhouette + 3-stop dark-earth
+ * gradient + a cross-azimuth shading band + sparse pebble highlights
+ * + a soft atmospheric distance haze at the horizon seam.
  *
- * Sampling strategy: 2° azimuth steps smooth-interpolated. At FOV=90°
- * this yields ~45 control points across the canvas, which is cheap
+ * This is a simplified version of the shader — the Canvas2D path
+ * samples noise per CSS pixel column (too slow to run fbm2D), so we
+ * approximate the GL shader's spatial texture by scattering stable
+ * dots at the same (az, depth) cells the shader uses.
+ *
+ * Sampling strategy: 1° azimuth steps smooth-interpolated. At FOV=90°
+ * this yields ~90 control points across the canvas, which is cheap
  * yet visually indistinguishable from per-pixel sampling for our
- * 0.03-NDC-amplitude silhouette.
+ * 0.06-NDC-amplitude silhouette.
  */
 function drawGround(
   ctx: CanvasRenderingContext2D,
@@ -66,17 +69,17 @@ function drawGround(
   // Entire screen is sky — nothing to paint.
   if (horizonY >= 1 + SILHOUETTE_AMPLITUDE_NDC) return;
 
-  const { earthNear, earthFar, haze, hazeAlpha } = groundColors(bg);
+  const { earthNear, earthMid, earthFar, haze, hazeAlpha } = groundColors(bg);
   const seed = silhouetteSeed(bearingRad);
 
   // Smooth-horizon pixel y.
   const smoothHorizonCssY =
     ndcToCssPixels(0, horizonY, cssWidth, cssHeight).py;
 
-  // Silhouette polyline: sample at ~2° az steps across the horizontal
+  // Silhouette polyline: sample at ~1° az steps across the horizontal
   // field of view. Always include the screen edges so the polygon
   // closes cleanly.
-  const stepAzRad = (2 * Math.PI) / 180;
+  const stepAzRad = Math.PI / 180;
   const halfFov = fovRad * 0.5;
   const stepsPerHalf = Math.max(2, Math.ceil(halfFov / stepAzRad));
   const totalSteps = stepsPerHalf * 2;
@@ -87,14 +90,13 @@ function drawGround(
     const ndcX = -1 + (2 * i) / totalSteps;
     const az = bearingRad + ndcX * halfFov;
     const silNdcY =
-      horizonNdcY(pitchRad, fovRad, aspect) +
+      horizonY +
       horizonSilhouette(az, seed) * SILHOUETTE_AMPLITUDE_NDC;
     const { px, py } = ndcToCssPixels(ndcX, silNdcY, cssWidth, cssHeight);
     silhouette.push({ x: px, y: py });
   }
 
-  // Fill the ground region: polyline from left edge to right edge
-  // along the silhouette, then down-right → down-left → close.
+  // Clip to the ground region (polyline → bottom corners → close).
   ctx.save();
   ctx.beginPath();
   const first = silhouette[0]!;
@@ -106,31 +108,91 @@ function drawGround(
   ctx.lineTo(cssWidth, cssHeight);
   ctx.lineTo(0, cssHeight);
   ctx.closePath();
+  ctx.clip();
 
-  // Vertical gradient from smooth horizon (near) to screen bottom (far).
+  // --- BASE GRADIENT (3 stops: near → mid → far) ---------------------
+  // Start at the smooth horizon so the silhouette above it still
+  // fills with the near colour; end at the screen bottom.
   const gradStartY = Math.min(smoothHorizonCssY, cssHeight);
   const gradient = ctx.createLinearGradient(0, gradStartY, 0, cssHeight);
-  const nr = Math.round(earthNear[0] * 255);
-  const ng = Math.round(earthNear[1] * 255);
-  const nb = Math.round(earthNear[2] * 255);
-  const fr = Math.round(earthFar[0] * 255);
-  const fg = Math.round(earthFar[1] * 255);
-  const fb = Math.round(earthFar[2] * 255);
-  gradient.addColorStop(0, `rgb(${nr}, ${ng}, ${nb})`);
-  gradient.addColorStop(1, `rgb(${fr}, ${fg}, ${fb})`);
+  const fmt = (c: [number, number, number]): string =>
+    `rgb(${Math.round(c[0] * 255)}, ${Math.round(c[1] * 255)}, ${Math.round(c[2] * 255)})`;
+  gradient.addColorStop(0, fmt(earthNear));
+  gradient.addColorStop(0.35, fmt(earthMid));
+  gradient.addColorStop(1, fmt(earthFar));
   ctx.fillStyle = gradient;
-  ctx.fill();
+  ctx.fillRect(0, 0, cssWidth, cssHeight);
 
-  // Thin haze stroke at the smooth-horizon y (under silhouette).
+  // --- AZIMUTH SHADING BANDS -----------------------------------------
+  // Broad alpha overlays tied to 1-D noise on azimuth so panning makes
+  // different swathes of ground read as lit / shadowed. Cheap: 12
+  // vertical strips shaded per-column by valueNoise1D.
+  const stripCount = 18;
+  for (let s = 0; s < stripCount; s++) {
+    const xNdcA = -1 + (2 * s) / stripCount;
+    const xNdcB = -1 + (2 * (s + 1)) / stripCount;
+    const azMid = bearingRad + ((xNdcA + xNdcB) * 0.5) * halfFov;
+    const shade = valueNoise1D(azMid * 1.3 + seed * 0.21); // [0,1]
+    // Signed variance, centred: -0.5..+0.5 → alpha overlay of
+    // black (darken) or white (lighten).
+    const variance = shade - 0.5;
+    const alpha = Math.abs(variance) * 0.12;
+    if (alpha < 0.005) continue;
+    const colour = variance < 0 ? 'rgba(0,0,0,' : 'rgba(255,255,255,';
+    ctx.fillStyle = `${colour}${alpha.toFixed(3)})`;
+    const xA = ((xNdcA + 1) * 0.5) * cssWidth;
+    const xB = ((xNdcB + 1) * 0.5) * cssWidth;
+    ctx.fillRect(xA, 0, xB - xA + 1, cssHeight);
+  }
+
+  // --- PEBBLE / GRAIN HIGHLIGHTS -------------------------------------
+  // Stable scatter of 1-pixel highlights using the same hash21 grid the
+  // shader uses. Fade out near the ridge (so the silhouette stays
+  // clean). Capped at ~400 pebbles per frame for performance.
+  ctx.fillStyle = 'rgba(210, 180, 140, 0.35)'; // warm pebble tint
+  const pebbleCols = 120;
+  const pebbleRows = 40;
+  const azRange = fovRad;
+  const azBase = bearingRad - halfFov;
+  for (let ci = 0; ci < pebbleCols; ci++) {
+    for (let ri = 0; ri < pebbleRows; ri++) {
+      const h = hash21(ci + 97, ri + 13);
+      if (h < 0.985) continue;
+      // Map (ci, ri) back to (az, depth-below-horizon in NDC).
+      const az = azBase + (ci / pebbleCols) * azRange;
+      const ndcX = -1 + (2 * ci) / pebbleCols;
+      // depth in NDC below the smooth horizon.
+      const depthNdc = (ri / pebbleRows) * (horizonY + 1);
+      const silNdcY =
+        horizonY + horizonSilhouette(az, seed) * SILHOUETTE_AMPLITUDE_NDC;
+      const fragNdcY = silNdcY - depthNdc;
+      if (fragNdcY < -1) continue;
+      // Pebble fade: depth > 0.02 ndc (≈1% of screen height) before
+      // pebbles start appearing.
+      if (depthNdc < 0.02) continue;
+      const { px, py } = ndcToCssPixels(ndcX, fragNdcY, cssWidth, cssHeight);
+      ctx.fillRect(Math.round(px), Math.round(py), 1, 1);
+    }
+  }
+
+  // --- DISTANCE HAZE -------------------------------------------------
+  // Soft atmospheric haze band at the smooth horizon, fading downward
+  // over ~5% of screen height. Drawn last so it overlays the texture.
+  const hazePx = Math.max(12, cssHeight * 0.05);
+  const hazeGrad = ctx.createLinearGradient(
+    0,
+    smoothHorizonCssY,
+    0,
+    smoothHorizonCssY + hazePx,
+  );
   const hr = Math.round(haze[0] * 255);
   const hg = Math.round(haze[1] * 255);
   const hb = Math.round(haze[2] * 255);
-  ctx.strokeStyle = `rgba(${hr}, ${hg}, ${hb}, ${hazeAlpha})`;
-  ctx.lineWidth = 1;
-  ctx.beginPath();
-  ctx.moveTo(0, smoothHorizonCssY);
-  ctx.lineTo(cssWidth, smoothHorizonCssY);
-  ctx.stroke();
+  hazeGrad.addColorStop(0, `rgba(${hr}, ${hg}, ${hb}, ${hazeAlpha})`);
+  hazeGrad.addColorStop(1, `rgba(${hr}, ${hg}, ${hb}, 0)`);
+  ctx.fillStyle = hazeGrad;
+  ctx.fillRect(0, smoothHorizonCssY, cssWidth, hazePx);
+
   ctx.restore();
 }
 
@@ -189,12 +251,6 @@ export function createCanvas2DRenderer(canvas: HTMLCanvasElement): Renderer {
     ctx.fillStyle = `rgb(${bg.r}, ${bg.g}, ${bg.b})`;
     ctx.fillRect(0, 0, cssWidth, cssHeight);
 
-    // 1a. Ground: stylized horizon silhouette + earth-tone gradient.
-    //     Drawn BEFORE stars so stars above the horizon are untouched.
-    //     Uses the same noise + horizon-NDC helpers as the WebGL2 path
-    //     so both renderers agree on horizon pixel position.
-    drawGround(ctx, bg, bearingRad, pitchRad, fovRad, aspect, cssWidth, cssHeight);
-
     // Pre-compute per-star apparent alt/az once, since both the star
     // pass and the line pass consume them.
     const latRad = obs.location.lat * DEG2RAD;
@@ -234,8 +290,10 @@ export function createCanvas2DRenderer(canvas: HTMLCanvasElement): Renderer {
     // 3. Constellation lines. The line pass reuses apparent alt/az for
     //    endpoints drawn in the star pass; for lines referencing stars
     //    we dropped (magnitude > 4.5) we still need their alt/az, so we
-    //    lazily fill them in as needed.
+    //    lazily fill them in as needed. Gated by the Constellation lines
+    //    layer toggle (obs.layers.constellationLines).
     const lineCache = projById; // alias — same structure, adds on demand
+    if (obs.layers.constellationLines) {
     ctx.lineWidth = 1;
     ctx.strokeStyle = 'rgba(180, 200, 240, 0.35)';
     ctx.beginPath();
@@ -273,7 +331,10 @@ export function createCanvas2DRenderer(canvas: HTMLCanvasElement): Renderer {
           b = { altDeg: h.altDeg, azDeg: h.azDeg, vmag: s.vmag, bv: s.bvIndex };
           lineCache.set(hr2, b);
         }
-        if (!isAboveHorizon(a.altDeg) && !isAboveHorizon(b.altDeg)) continue;
+        // Cull: ANY endpoint below horizon → skip. Straddling lines
+        // would otherwise paint through the ground silhouette (same
+        // reasoning as the WebGL2 line pass).
+        if (!isAboveHorizon(a.altDeg) || !isAboveHorizon(b.altDeg)) continue;
         const pa = projectAltAzDegToNdc(a.altDeg, a.azDeg, bearingRad, pitchRad, fovRad, aspect);
         const pb = projectAltAzDegToNdc(b.altDeg, b.azDeg, bearingRad, pitchRad, fovRad, aspect);
         if (!pa || !pb) continue;
@@ -284,6 +345,7 @@ export function createCanvas2DRenderer(canvas: HTMLCanvasElement): Renderer {
       }
     }
     ctx.stroke();
+    } // end if (obs.layers.constellationLines)
 
     // 4. Sun, Moon, planets as Unicode glyphs tinted per body.
     const canvasWidthPx = cssWidth * pixelRatio;
@@ -307,6 +369,12 @@ export function createCanvas2DRenderer(canvas: HTMLCanvasElement): Renderer {
       ctx.font = `${Math.round(renderSize)}px system-ui, "Segoe UI Symbol", "Apple Color Emoji", sans-serif`;
       ctx.fillText(BODY_GLYPH[body.id], px, py);
     }
+
+    // 5. Ground LAST — overdraws any stars/lines/planets that would
+    //    otherwise show through the ground (the user sees a solid
+    //    terrain, not perspective ghosts). Matches the WebGL2 render
+    //    order in src/render/renderer.ts.
+    drawGround(ctx, bg, bearingRad, pitchRad, fovRad, aspect, cssWidth, cssHeight);
   }
 
   function dispose(): void {

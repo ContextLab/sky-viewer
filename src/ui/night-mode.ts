@@ -1,6 +1,11 @@
-// Night Mode — a real-time AR-style view that slaves the Observation to the
+// Live Mode — a real-time AR-style view that slaves the Observation to the
 // device's GPS + compass sensors so the rendered sky lines up with where the
 // user is actually pointing the phone.
+//
+// Historically called "Night Mode"; renamed to "Live Mode" because the
+// button name now describes what it does (live sensor sync) instead of
+// implying dark-adapted-vision theming (that's now a separate toggle in
+// src/ui/red-light-mode.ts).
 //
 // Contract:
 //   export function mountNightModeToggle(parent: HTMLElement): void
@@ -254,7 +259,7 @@ function handlePositionError(err: GeolocationPositionError): void {
         : err.code === 3
           ? "location timeout"
           : "geolocation error";
-  showToast(`Night mode: ${reason}.`);
+  showToast(`Live mode: ${reason}.`);
 }
 
 async function enterNightMode(): Promise<void> {
@@ -262,15 +267,15 @@ async function enterNightMode(): Promise<void> {
 
   // Feature detection.
   if (typeof window === "undefined" || typeof navigator === "undefined") {
-    showToast("Night mode unavailable in this environment.");
+    showToast("Live mode unavailable in this environment.");
     return;
   }
   if (!("geolocation" in navigator)) {
-    showToast("Night mode needs geolocation, which is not available.");
+    showToast("Live mode needs geolocation, which is not available.");
     return;
   }
   if (typeof window.DeviceOrientationEvent === "undefined") {
-    showToast("Night mode needs device orientation sensors (not available).");
+    showToast("Live mode needs device orientation sensors (not available).");
     return;
   }
 
@@ -291,12 +296,12 @@ async function enterNightMode(): Promise<void> {
     try {
       const res = await DOE.requestPermission();
       if (res !== "granted") {
-        showToast("Night mode: orientation permission denied.");
+        showToast("Live mode: orientation permission denied.");
         saved = null;
         return;
       }
     } catch {
-      showToast("Night mode: could not request orientation permission.");
+      showToast("Live mode: could not request orientation permission.");
       saved = null;
       return;
     }
@@ -311,7 +316,7 @@ async function enterNightMode(): Promise<void> {
     if (perms && typeof perms.query === "function") {
       const status = await perms.query({ name: "geolocation" as PermissionName });
       if (status.state === "denied") {
-        showToast("Night mode: location permission denied.");
+        showToast("Live mode: location permission denied.");
         saved = null;
         return;
       }
@@ -334,7 +339,7 @@ async function enterNightMode(): Promise<void> {
       window.removeEventListener(eventName, handleOrientation as EventListener, true)
     );
   } catch {
-    showToast("Night mode: failed to subscribe to orientation sensor.");
+    showToast("Live mode: failed to subscribe to orientation sensor.");
     saved = null;
     cleanups.forEach((fn) => fn());
     cleanups = [];
@@ -358,7 +363,7 @@ async function enterNightMode(): Promise<void> {
       }
     });
   } catch {
-    showToast("Night mode: failed to start geolocation watch.");
+    showToast("Live mode: failed to start geolocation watch.");
     // Unwind any subscriptions already registered.
     cleanups.forEach((fn) => fn());
     cleanups = [];
@@ -423,7 +428,9 @@ function exitNightMode(): void {
 function updateButtonUi(): void {
   if (!buttonEl) return;
   buttonEl.setAttribute("aria-pressed", String(isActive));
-  buttonEl.textContent = isActive ? "☾ Exit Night Mode" : "☾ Night Mode";
+  // Compass-rose glyph signals "point the phone at the sky" better than
+  // the old crescent-moon glyph did.
+  buttonEl.textContent = isActive ? "\u25C9 Exit Live Mode" : "\u25CE Live Mode";
   buttonEl.title = isActive
     ? "Stop using device sensors and return to manual control"
     : "Use device GPS + compass to align the sky with what you're pointing at";
@@ -459,7 +466,7 @@ export function mountNightModeToggle(parent: HTMLElement): void {
   status.className = "night-mode-status";
   status.setAttribute("role", "status");
   status.setAttribute("aria-live", "polite");
-  status.textContent = "Night Mode • Live GPS + compass";
+  status.textContent = "Live Mode \u2022 GPS + compass";
   status.hidden = true;
   statusBannerEl = status;
 

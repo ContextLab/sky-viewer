@@ -1,12 +1,13 @@
 // T058 — Field-of-view control. Binds gestures (wheel on desktop, pinch on
-// touch, global +/- keys) to the shared canvas, and mounts a small indicator
-// panel showing the current FOV numerically plus a decorative scale bar.
+// touch, global +/- keys) to the shared canvas, and mounts an interactive
+// panel showing the current FOV numerically plus a draggable scale bar.
 // Implements FR-005a.
 import { getObservation, setObservation, subscribe } from "../app/observation-store";
 
 const MIN_FOV = 30;
 const MAX_FOV = 180;
 const KEY_STEP_DEG = 5;
+const KEY_STEP_LARGE_DEG = 30;
 const WHEEL_STEP_DEG = 5;
 
 interface TouchPoint {
@@ -34,17 +35,21 @@ export function mountFovControl(
   // Indicator UI.
   const panel = document.createElement("div");
   panel.className = "panel fov-control";
-  panel.setAttribute("role", "status");
-  panel.setAttribute("aria-live", "off");
   panel.setAttribute("aria-label", "Field of view");
 
   const readout = document.createElement("span");
   readout.className = "readout fov-readout";
   panel.append(readout);
 
+  // The bar acts as a slider: role="slider" + full ARIA contract.
   const bar = document.createElement("div");
   bar.className = "fov-bar";
-  bar.setAttribute("aria-hidden", "true");
+  bar.setAttribute("role", "slider");
+  bar.setAttribute("aria-label", "Field of view");
+  bar.setAttribute("aria-valuemin", String(MIN_FOV));
+  bar.setAttribute("aria-valuemax", String(MAX_FOV));
+  bar.setAttribute("aria-valuenow", String(getObservation().fovDeg));
+  bar.tabIndex = 0;
   const marker = document.createElement("div");
   marker.className = "fov-bar-marker";
   bar.append(marker);
@@ -57,9 +62,81 @@ export function mountFovControl(
     readout.textContent = `FOV: ${Math.round(clamped)}°`;
     const pct = ((clamped - MIN_FOV) / (MAX_FOV - MIN_FOV)) * 100;
     marker.style.setProperty("--fov-pct", `${pct}%`);
+    bar.setAttribute("aria-valuenow", String(Math.round(clamped)));
+    bar.setAttribute(
+      "aria-valuetext",
+      `${Math.round(clamped)} degrees`
+    );
   };
   subscribe((obs) => applyFov(obs.fovDeg));
   applyFov(getObservation().fovDeg);
+
+  // ---------------------------------------------------------------------------
+  // Direct interaction on the FOV bar: pointer-down → set-from-x, then drag.
+  // This is in addition to the canvas gestures below; both paths write to
+  // the same store so they stay in sync.
+  const fovFromClientX = (clientX: number): number => {
+    const rect = bar.getBoundingClientRect();
+    if (rect.width <= 0) return getObservation().fovDeg;
+    const t = (clientX - rect.left) / rect.width;
+    const tClamped = clamp(t, 0, 1);
+    return MIN_FOV + tClamped * (MAX_FOV - MIN_FOV);
+  };
+
+  let barDragPointerId: number | null = null;
+  bar.addEventListener("pointerdown", (ev: PointerEvent) => {
+    barDragPointerId = ev.pointerId;
+    try {
+      bar.setPointerCapture(ev.pointerId);
+    } catch {
+      // Capture failures are non-fatal; drag still works via window-level
+      // pointermove (browsers without setPointerCapture still dispatch
+      // events to the original target while the button is down).
+    }
+    setObservation({ fovDeg: fovFromClientX(ev.clientX) });
+    ev.preventDefault();
+  });
+  bar.addEventListener("pointermove", (ev: PointerEvent) => {
+    if (barDragPointerId === null || ev.pointerId !== barDragPointerId) return;
+    setObservation({ fovDeg: fovFromClientX(ev.clientX) });
+    ev.preventDefault();
+  });
+  const endBarDrag = (ev: PointerEvent): void => {
+    if (barDragPointerId === null || ev.pointerId !== barDragPointerId) return;
+    try {
+      bar.releasePointerCapture(ev.pointerId);
+    } catch {
+      // Ignore.
+    }
+    barDragPointerId = null;
+  };
+  bar.addEventListener("pointerup", endBarDrag);
+  bar.addEventListener("pointercancel", endBarDrag);
+
+  // Focused-widget keyboard: ArrowLeft/Right ±5°, Shift ±30°, Home → 90°.
+  bar.addEventListener("keydown", (ev: KeyboardEvent) => {
+    const cur = getObservation().fovDeg;
+    const step = ev.shiftKey ? KEY_STEP_LARGE_DEG : KEY_STEP_DEG;
+    if (ev.key === "ArrowLeft" || ev.key === "ArrowDown") {
+      setObservation({ fovDeg: clamp(cur - step, MIN_FOV, MAX_FOV) });
+      ev.preventDefault();
+    } else if (ev.key === "ArrowRight" || ev.key === "ArrowUp") {
+      setObservation({ fovDeg: clamp(cur + step, MIN_FOV, MAX_FOV) });
+      ev.preventDefault();
+    } else if (ev.key === "Home") {
+      setObservation({ fovDeg: 90 });
+      ev.preventDefault();
+    } else if (ev.key === "End") {
+      setObservation({ fovDeg: MAX_FOV });
+      ev.preventDefault();
+    } else if (ev.key === "PageDown") {
+      setObservation({ fovDeg: clamp(cur - KEY_STEP_LARGE_DEG, MIN_FOV, MAX_FOV) });
+      ev.preventDefault();
+    } else if (ev.key === "PageUp") {
+      setObservation({ fovDeg: clamp(cur + KEY_STEP_LARGE_DEG, MIN_FOV, MAX_FOV) });
+      ev.preventDefault();
+    }
+  });
 
   // ---------------------------------------------------------------------------
   // Wheel (desktop). One notch = ±WHEEL_STEP_DEG. Zoom-in (deltaY < 0) shrinks
@@ -157,10 +234,14 @@ export function mountFovControl(
   canvasForGestures.addEventListener("touchcancel", endTouch, { passive: true });
 
   // ---------------------------------------------------------------------------
-  // Global keyboard. Skip when an input has focus.
+  // Global keyboard. Skip when an input has focus. (The bar widget's own
+  // keydown handler above handles focused-widget keys like ArrowLeft.)
   document.addEventListener("keydown", (ev) => {
     if (isEditableTarget(ev.target)) return;
     if (ev.ctrlKey || ev.metaKey || ev.altKey) return;
+    // If the FOV bar itself has focus, its keydown handler already
+    // processed the event — don't double-handle.
+    if (ev.target === bar) return;
     const cur = getObservation().fovDeg;
     if (ev.key === "+" || ev.key === "=") {
       // Zoom in = smaller FOV.

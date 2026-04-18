@@ -9,6 +9,17 @@
   --bg-civil:        #243e80;
   --bg-day:          #7aa8d8;
 
+  /* Ground / terrain palette — a "dark earth" atmospheric scheme.
+     Kept mostly dark so the sky remains the visual hero. The ground
+     pass (src/render/webgl2/shaders.ts::GROUND_FRAG + Canvas2D
+     fallback) derives runtime values from the current sky bg, so
+     these tokens are reference anchors rather than the literal
+     rendered colours. */
+  --ground-horizon:  #361f16;   /* warm terracotta (near-horizon glow) */
+  --ground-mid:      #141210;   /* cool desaturated loam (mid band)   */
+  --ground-far:      #060504;   /* near-black (screen bottom)         */
+  --ground-pebble:   rgba(210, 180, 140, 0.35); /* faint pebble tint  */
+
   /* Foreground */
   --fg:              #dde4f0;
   --fg-muted:        #7b889e;
@@ -135,11 +146,25 @@ canvas#sky {
   gap: var(--sp-2);
 }
 
-.overlay > * {
+/* Only actual interactive controls receive pointer events. The top-bar /
+   middle / bottom-bar wrapper divs stay pointer-events:none so drag
+   gestures on the sky canvas pass through to src/ui/sky-gestures.ts. */
+.overlay .panel,
+.overlay button,
+.overlay select,
+.overlay input,
+.overlay .layer-toggles,
+.overlay .banner,
+.overlay .night-mode-toggle,
+.overlay .red-light-mode,
+.overlay .map-picker-trigger,
+.overlay .map-picker-dialog {
   pointer-events: auto;
 }
 
 .panel {
+  position: relative;
+  z-index: 15;
   background: var(--ui-bg);
   border: 1px solid var(--ui-border);
   border-radius: var(--panel-radius);
@@ -260,24 +285,37 @@ button[aria-pressed="true"] {
 .top-bar {
   display: flex;
   justify-content: space-between;
-  align-items: flex-start;
+  align-items: stretch;
   gap: var(--sp-2);
   min-height: 0;
+}
+
+/* Unified top-bar widget height. The DATE/TIME inputs are ~56 px tall
+   including padding; we target ~64 px so the compass/pitch/FOV/night-
+   mode controls all read as one coherent instrument strip. */
+:root {
+  --top-widget-h: 64px;
 }
 
 .top-bar .top-left {
   display: flex;
   flex-wrap: wrap;
-  align-items: flex-start;
+  align-items: stretch;
   gap: var(--sp-2);
 }
 
 .top-bar .top-right {
   display: flex;
   flex-wrap: nowrap;
-  align-items: flex-start;
+  align-items: stretch;
   gap: var(--sp-2);
   flex-shrink: 0;
+}
+
+/* Every top-bar panel shares the unified height on hover-capable (non-
+   mobile) layouts. Mobile layout overrides this below. */
+.top-bar .panel {
+  min-height: var(--top-widget-h);
 }
 
 .bottom-bar {
@@ -292,8 +330,9 @@ button[aria-pressed="true"] {
   display: inline-flex;
   flex-direction: column;
   align-items: center;
-  gap: var(--sp-2);
-  padding: var(--panel-pad-y) var(--panel-pad-x);
+  justify-content: center;
+  gap: var(--sp-1);
+  padding: var(--sp-2) var(--sp-3);
 }
 
 .compass {
@@ -301,12 +340,16 @@ button[aria-pressed="true"] {
   -webkit-user-select: none;
 }
 
+/* Scale the 110×110 compass SVG down to 44×44 (unified instrument size).
+   The SVG has a viewBox so the rose + labels rescale cleanly. */
 .compass .compass-svg {
   display: block;
   touch-action: none;
   cursor: grab;
   border-radius: 50%;
   transition: opacity var(--t-fast);
+  width: 44px;
+  height: 44px;
 }
 
 .compass .compass-svg:active {
@@ -326,34 +369,51 @@ button[aria-pressed="true"] {
 .compass-readout {
   font-family: var(--font-mono);
   font-variant-numeric: tabular-nums;
-  font-size: var(--fs-sm);
+  font-size: var(--fs-xs);
   color: var(--fg-muted);
   letter-spacing: var(--ls-readout);
   text-align: center;
   white-space: nowrap;
+  line-height: 1.1;
 }
 
 .fov-control {
-  min-width: 108px;
+  min-width: 120px;
   align-items: stretch !important;
-  gap: var(--sp-2) !important;
+  gap: var(--sp-1) !important;
+  justify-content: center;
 }
 
 .fov-control .fov-readout {
   font-family: var(--font-mono);
   font-variant-numeric: tabular-nums;
-  font-size: var(--fs-sm);
+  font-size: var(--fs-xs);
   color: var(--fg);
   letter-spacing: var(--ls-readout);
+  text-align: center;
+  line-height: 1.1;
 }
 
 .fov-control .fov-bar {
   position: relative;
   width: 100%;
-  height: 4px;
-  border-radius: 2px;
+  height: 10px;
+  min-height: 10px;
+  border-radius: 5px;
   background: rgba(255, 255, 255, 0.10);
   border: 1px solid var(--ui-border);
+  cursor: pointer;
+  touch-action: none;
+}
+
+.fov-control .fov-bar:hover {
+  border-color: var(--ui-border-hover);
+  background: rgba(255, 255, 255, 0.14);
+}
+
+.fov-control .fov-bar:focus-visible {
+  outline: none;
+  box-shadow: var(--ring);
 }
 
 .fov-control .fov-bar-marker {
@@ -361,13 +421,14 @@ button[aria-pressed="true"] {
   position: absolute;
   top: 50%;
   left: var(--fov-pct);
-  width: 10px;
-  height: 10px;
+  width: 14px;
+  height: 14px;
   border-radius: 50%;
   background: var(--accent);
   border: 1.5px solid var(--bg-night);
   transform: translate(-50%, -50%);
   box-shadow: 0 0 6px var(--accent-glow);
+  pointer-events: none;
 }
 
 .pitch-control {
@@ -380,6 +441,11 @@ button[aria-pressed="true"] {
   touch-action: none;
   cursor: grab;
   border-radius: 4px;
+  /* Unified instrument scale: the 44×110 SVG shrinks to 20×44 so it
+     reads as a compact slider alongside the compass dial. The viewBox
+     preserves the tick layout. */
+  width: 20px;
+  height: 44px;
 }
 
 .pitch-control .pitch-svg:active {
@@ -400,11 +466,12 @@ button[aria-pressed="true"] {
 .pitch-readout {
   font-family: var(--font-mono);
   font-variant-numeric: tabular-nums;
-  font-size: var(--fs-sm);
+  font-size: var(--fs-xs);
   color: var(--fg-muted);
   letter-spacing: var(--ls-readout);
   text-align: center;
   white-space: nowrap;
+  line-height: 1.1;
 }
 
 .layer-toggles {
@@ -467,6 +534,9 @@ button[aria-pressed="true"] {
   flex: 1;
 }
 
+/* Object labels overlay: below UI panels but above the canvas.
+   Panels get z-index: 15 via the .panel rule below; this keeps labels
+   behind widget chrome so they never obscure controls. */
 .object-labels {
   position: absolute;
   inset: 0;
@@ -549,6 +619,17 @@ button[aria-pressed="true"] {
 
 .object-labels .object-labels-tooltip[hidden] {
   display: none;
+}
+
+/* "Live Mode" (GPS + compass AR) is only meaningful on devices with
+   real accelerometer / magnetometer / GPS. Hide on anything that looks
+   like a desktop: hover-capable AND fine pointer AND viewport > 768 px.
+   Real phones and tablets fail one of those checks (even iPad Pro with
+   a Magic Keyboard still exposes touch as the primary pointer). */
+@media (hover: hover) and (pointer: fine) and (min-width: 769px) {
+  .night-mode {
+    display: none !important;
+  }
 }
 
 .night-mode {
@@ -698,4 +779,72 @@ button[aria-pressed="true"] {
     animation-duration: 0.01ms !important;
     transition-duration: 0.01ms !important;
   }
+}
+
+/* ----------------------------------------------------------------------
+   Red Light Mode — astronomer's dark-adaptation overlay.
+   A full-screen multiply-blend veil that forces every rendered pixel
+   toward the red channel while letting the UI stay visible. See
+   src/ui/red-light-mode.ts for the logic that toggles `.red-veil`'s
+   visibility and adds `.red-light-active` to <body>.
+   ---------------------------------------------------------------------- */
+
+.red-light-mode {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: var(--sp-2);
+  padding: var(--sp-2) var(--sp-3);
+  min-width: 100px;
+  position: relative;
+}
+
+.red-light-mode .red-light-mode-button {
+  background: var(--input-bg);
+  color: var(--fg);
+  border: 1px solid var(--ui-border);
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  padding: var(--sp-1) var(--sp-3);
+  min-height: 32px;
+  white-space: nowrap;
+}
+
+.red-light-mode .red-light-mode-button:hover {
+  background: var(--input-bg-hover);
+  border-color: var(--ui-border-hover);
+}
+
+.red-light-mode .red-light-mode-button[aria-pressed="true"] {
+  background: rgba(200, 20, 20, 0.22);
+  border-color: #d64242;
+  color: #ffe8e8;
+}
+
+/* The veil itself. Fixed to cover the entire viewport — including the
+   canvas and every overlay — so no green/blue photons escape. Pointer
+   events pass through so the underlying UI remains interactive.
+   mix-blend-mode: multiply forces each channel of the underlying pixel
+   to be multiplied by the veil colour: with a saturated #ff0000 fill
+   at high opacity, G and B are driven to near-zero while R passes. */
+.red-veil {
+  position: fixed;
+  inset: 0;
+  background: #ff0000;
+  mix-blend-mode: multiply;
+  opacity: 0.85;
+  pointer-events: none;
+  z-index: 10000;
+  /* Stack above any existing canvas, overlay, banner, map dialog. */
+}
+
+.red-veil[hidden] {
+  display: none;
+}
+
+/* When active, also dim the accent/focus glow so the UI doesn't fight
+   the red palette. These are cosmetic — the veil does the heavy lifting. */
+body.red-light-active {
+  /* Subtle tint behind the veil in case blend-mode isn't supported. */
+  background: #100000;
 }

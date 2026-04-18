@@ -24,10 +24,11 @@ function formatOffset(minutes: number): string {
 }
 
 function formatLocation(obs: Observation): string {
-  if (obs.location.label) return obs.location.label;
   const latDir = obs.location.lat >= 0 ? "N" : "S";
   const lonDir = obs.location.lon >= 0 ? "E" : "W";
-  return `${Math.abs(obs.location.lat).toFixed(3)}°${latDir} ${Math.abs(obs.location.lon).toFixed(3)}°${lonDir}`;
+  const coords = `${Math.abs(obs.location.lat).toFixed(4)}°${latDir} ${Math.abs(obs.location.lon).toFixed(4)}°${lonDir}`;
+  if (obs.location.label) return `${obs.location.label} (${coords})`;
+  return coords;
 }
 
 export function buildSummary(obs: Observation): string {

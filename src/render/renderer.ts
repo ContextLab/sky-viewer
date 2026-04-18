@@ -96,20 +96,7 @@ function createWebGL2Renderer(canvas: HTMLCanvasElement, gl: WebGL2RenderingCont
     gl.clearColor(bg.r / 255, bg.g / 255, bg.b / 255, 1.0);
     gl.clear(gl.COLOR_BUFFER_BIT);
 
-    // 2. Ground pass FIRST — paints the stylized horizon silhouette
-    //    and earth-tone gradient below it. Writes opaque RGB so
-    //    subsequent additive stars/planets above the silhouette are
-    //    untouched (discarded fragments leave the sky clear-colour).
-    gl.disable(gl.BLEND);
-    groundPass.draw(state, {
-      bearingRad,
-      pitchRad,
-      fovRad,
-      aspect,
-      canvasHeightPx: canvas.height,
-    });
-
-    // 3. Additive blending for stars and planets (so overlapping
+    // 2. Additive blending for stars and planets (so overlapping
     //    discs brighten rather than cut out). Constellation lines use
     //    the same state — straight rgba over the background looks
     //    fine because the alpha channel is low.
@@ -127,22 +114,39 @@ function createWebGL2Renderer(canvas: HTMLCanvasElement, gl: WebGL2RenderingCont
     };
 
     // 4. Constellation lines first so stars draw on top of them.
-    linePass.update(obs, datasets.constellations, datasets.stars, state.utcMs);
-    linePass.draw({
-      bearingRad,
-      pitchRad,
-      fovRad,
-      aspect,
-      color: [0.7, 0.78, 0.95, 0.35],
-    });
+    //    Gated by obs.layers.constellationLines (Layers > Constellation lines).
+    if (obs.layers.constellationLines) {
+      linePass.update(obs, datasets.constellations, datasets.stars, state.utcMs);
+      linePass.draw({
+        bearingRad,
+        pitchRad,
+        fovRad,
+        aspect,
+        color: [0.7, 0.78, 0.95, 0.35],
+      });
+    }
 
     // 5. Stars.
     starPass.update(obs, datasets.stars, state.utcMs);
     starPass.draw(commonUniforms);
 
-    // 6. Planets (drawn last so they sit atop stars).
+    // 6. Planets (drawn last among sky objects so they sit atop stars).
     planetPass.update(state, canvas.width);
     planetPass.draw(commonUniforms);
+
+    // 7. Ground pass LAST — paints the stylized horizon silhouette
+    //    and earth-tone gradient below the horizon, OVERDRAWING any
+    //    stars/lines/planets that would otherwise be visible through
+    //    the ground. Discarded fragments (above the silhouette) leave
+    //    the sky untouched. Opaque RGB, blending off.
+    gl.disable(gl.BLEND);
+    groundPass.draw(state, {
+      bearingRad,
+      pitchRad,
+      fovRad,
+      aspect,
+      canvasHeightPx: canvas.height,
+    });
   }
 
   function dispose(): void {

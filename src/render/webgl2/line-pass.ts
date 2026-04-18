@@ -2,9 +2,11 @@
 //
 // For each Constellation.lines entry (a pair of star HR ids), emit
 // two vertices carrying the two stars' apparent (alt, az). The GPU
-// draws them with gl.LINES. Lines both of whose endpoints are below
-// the horizon are culled on the CPU side (cheap). Lines straddling
-// the horizon are kept; one endpoint will clip in the rasterizer.
+// draws them with gl.LINES. Lines with ANY endpoint below the horizon
+// are culled on the CPU side (cheap) — straddling the horizon would
+// otherwise draw a visible segment running through the ground region,
+// which reads as a perspective glitch once the ground pass paints the
+// horizon silhouette on top of the pre-rendered sky.
 
 import type { Star } from '../../astro/stars';
 import { precessStarToEpoch } from '../../astro/stars';
@@ -128,8 +130,12 @@ export class LinePass {
         const a = getAltAz(hr1);
         const b = getAltAz(hr2);
         if (!a || !b) continue;
-        // Cull: both endpoints clearly below horizon → skip.
-        if (!isAboveHorizon(a.altDeg) && !isAboveHorizon(b.altDeg)) continue;
+        // Cull: ANY endpoint below the horizon → skip. We can't let
+        // lines straddle the horizon because the rasterized segment
+        // below the horizon would show as bright pixels overlapping
+        // the ground silhouette (the ground pass cannot depth-cull
+        // lines that are drawn after it).
+        if (!isAboveHorizon(a.altDeg) || !isAboveHorizon(b.altDeg)) continue;
         this.vertexData[write] = a.altDeg * DEG2RAD;
         this.vertexData[write + 1] = a.azDeg * DEG2RAD;
         this.vertexData[write + 2] = b.altDeg * DEG2RAD;

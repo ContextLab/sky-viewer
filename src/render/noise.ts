@@ -12,7 +12,8 @@
 // and kept in lockstep.
 //
 // Implementation: a cheap hash → smoothstep-lerp between adjacent
-// integer lattice points.
+// integer lattice points, plus a 2-D hash used by the ground texture
+// pass for faint pebble/grain scattering.
 
 /**
  * Deterministic pseudo-random scalar in [0, 1) keyed on an integer
@@ -27,6 +28,16 @@
 export function hash11(n: number): number {
   const x = Math.sin(n * 127.1 + 31.7) * 43758.5453;
   return x - Math.floor(x);
+}
+
+/**
+ * 2-D deterministic pseudo-random scalar in [0, 1). Matches the GLSL
+ * `hash21` below. Used by the ground texture pass for stable pebble
+ * scatter and 2-D micro-noise.
+ */
+export function hash21(x: number, y: number): number {
+  const v = Math.sin(x * 127.1 + y * 311.7) * 43758.5453;
+  return v - Math.floor(v);
 }
 
 /**
@@ -48,18 +59,23 @@ export function valueNoise1D(x: number): number {
  * offset that callers multiply by an amplitude to produce the
  * pixel-space silhouette perturbation.
  *
- * Two-octave fBm: one low-frequency base (gentle rolling hills) plus
- * one higher-frequency overlay (texture on the hilltops). Identical
- * to `horizonSilhouette` in GLSL.
+ * Two-octave fBm: one LOW-frequency rolling-hill base (broad
+ * mountain-like shapes ~every 30–40°), one MID-frequency hill layer,
+ * and a fine micro-bump layer on top. The combination gives a
+ * fractal silhouette that reads as distant terrain rather than a
+ * single-frequency wave. Identical to `horizonSilhouette` in GLSL.
  */
 export function horizonSilhouette(azRad: number, seed: number): number {
-  // Convert azimuth to a lattice coordinate. 6 lattice points per
-  // radian gives ~1 hill every ~10° which reads as "distant rolling
-  // terrain" rather than sharp peaks.
-  const base = valueNoise1D(azRad * 6 + seed);
+  // Octave 1: broad mountains (≈ 1 peak every ~30°).
+  const mountains = valueNoise1D(azRad * 1.8 + seed * 0.37);
+  // Octave 2: rolling hills (≈ 1 hill every ~10°).
+  const hills = valueNoise1D(azRad * 6 + seed);
+  // Octave 3: fine micro-bumps on the ridgeline.
   const detail = valueNoise1D(azRad * 17 + seed * 1.7);
-  // Blend to a signed [−1, 1]-ish range, weighted toward the base.
-  return (base * 0.75 + detail * 0.25) * 2 - 1;
+  // Weighted fBm: mountains dominate, hills shape the mid-range,
+  // detail adds crunch. Remap [0,1] to signed [−1, +1].
+  const blend = mountains * 0.55 + hills * 0.30 + detail * 0.15;
+  return blend * 2 - 1;
 }
 
 /**
@@ -69,12 +85,18 @@ export function horizonSilhouette(azRad: number, seed: number): number {
  *
  * The TS / GLSL correspondence (docs for future maintainers):
  *   hash11(n)              ↔ fract(sin(n * 127.1 + 31.7) * 43758.5453)
+ *   hash21(x, y)           ↔ fract(sin(x*127.1 + y*311.7) * 43758.5453)
  *   valueNoise1D(x)        ↔ smoothstep-lerp(hash11(floor(x)), hash11(floor(x)+1), fract(x))
- *   horizonSilhouette(a,s) ↔ (valueNoise1D(a*6+s)*0.75 + valueNoise1D(a*17+s*1.7)*0.25) * 2 − 1
+ *   valueNoise2D(p)        ↔ bilinear smoothstep-lerp of hash21 at the four lattice corners
+ *   horizonSilhouette(a,s) ↔ (noise(a*1.8+s*0.37)*0.55 + noise(a*6+s)*0.30 + noise(a*17+s*1.7)*0.15) * 2 − 1
  */
 export const GROUND_NOISE_GLSL = /* glsl */ `
 float hash11(float n) {
   return fract(sin(n * 127.1 + 31.7) * 43758.5453);
+}
+
+float hash21(vec2 p) {
+  return fract(sin(p.x * 127.1 + p.y * 311.7) * 43758.5453);
 }
 
 float valueNoise1D(float x) {
@@ -86,9 +108,32 @@ float valueNoise1D(float x) {
   return a + (b - a) * u;
 }
 
+// 2-D value noise: bilinear smoothstep-lerp of four lattice-corner
+// hash21 samples. Returns [0, 1]. Used by the ground texture pass
+// for subtle albedo variation.
+float valueNoise2D(vec2 p) {
+  vec2 i = floor(p);
+  vec2 f = p - i;
+  vec2 u = f * f * (3.0 - 2.0 * f);
+  float a = hash21(i);
+  float b = hash21(i + vec2(1.0, 0.0));
+  float c = hash21(i + vec2(0.0, 1.0));
+  float d = hash21(i + vec2(1.0, 1.0));
+  return mix(mix(a, b, u.x), mix(c, d, u.x), u.y);
+}
+
+// 2-octave fBm of valueNoise2D. Adds spatial variation with a tiny
+// amount of structure without looking noisy-digital. Returns [0, 1].
+float fbm2D(vec2 p) {
+  float v = valueNoise2D(p) * 0.65;
+  v += valueNoise2D(p * 2.17 + 7.3) * 0.35;
+  return v;
+}
+
 float horizonSilhouette(float azRad, float seed) {
-  float base = valueNoise1D(azRad * 6.0 + seed);
+  float mountains = valueNoise1D(azRad * 1.8 + seed * 0.37);
+  float hills = valueNoise1D(azRad * 6.0 + seed);
   float detail = valueNoise1D(azRad * 17.0 + seed * 1.7);
-  return (base * 0.75 + detail * 0.25) * 2.0 - 1.0;
+  return (mountains * 0.55 + hills * 0.30 + detail * 0.15) * 2.0 - 1.0;
 }
 `;

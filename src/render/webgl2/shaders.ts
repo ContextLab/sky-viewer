@@ -282,10 +282,11 @@ uniform float uAspect;         // canvas width / height.
 uniform float uSilhouetteSeed; // Stable per-view-seed (bearing-driven).
 uniform float uAmplitudeNdc;   // Silhouette vertical amplitude (NDC units).
 uniform vec3 uEarthNear;       // Ground colour near the horizon (0..1).
+uniform vec3 uEarthMid;        // Ground colour in the mid-band (0..1).
 uniform vec3 uEarthFar;        // Ground colour at the screen bottom (0..1).
-uniform vec3 uHazeRgb;         // Haze-line colour (0..1).
-uniform float uHazeAlpha;      // Haze-line opacity (0..1).
-uniform float uHazeHalfPx;     // Half-width of the haze line, in pixels.
+uniform vec3 uHazeRgb;         // Distance-haze tint (0..1).
+uniform float uHazeAlpha;      // Peak haze alpha at the horizon seam.
+uniform float uHazeHalfPx;     // Half-width of the haze band, in pixels.
 uniform float uCanvasHeightPx; // Drawing-buffer height in pixels (for px→NDC).
 
 out vec4 fragColor;
@@ -296,7 +297,7 @@ void main() {
   // uFovRad, so the angular half-width per NDC-unit is uFovRad/2.
   float az = uBearingRad + vNdc.x * (uFovRad * 0.5);
 
-  // Silhouette NDC y: horizon shifted by noise × amplitude.
+  // Silhouette NDC y: horizon shifted by fractal noise × amplitude.
   float silY = uHorizonY + horizonSilhouette(az, uSilhouetteSeed) * uAmplitudeNdc;
 
   // Above silhouette → let the sky clear-colour show through.
@@ -304,19 +305,73 @@ void main() {
     discard;
   }
 
-  // Vertical gradient from near-horizon colour (at silY) down to
-  // far-earth colour at the screen bottom (NDC y = −1).
+  // --- BASE GRADIENT -------------------------------------------------
+  // Three-stop gradient (near, mid, far). t runs 0 at the ridgeline
+  // to 1 at the screen bottom. The mid band sits at t ~= 0.35 so
+  // the warm horizon glow fades off quickly, ceding the bulk of the
+  // ground to the cool earth tone and near-black floor.
   float denom = max(silY + 1.0, 1e-4);
   float t = clamp((silY - vNdc.y) / denom, 0.0, 1.0);
-  vec3 ground = mix(uEarthNear, uEarthFar, t);
+  vec3 ground;
+  if (t < 0.35) {
+    ground = mix(uEarthNear, uEarthMid, smoothstep(0.0, 0.35, t));
+  } else {
+    ground = mix(uEarthMid, uEarthFar, smoothstep(0.35, 1.0, t));
+  }
 
-  // Haze line at the smooth horizon (uHorizonY), a thin band whose
-  // half-width is uHazeHalfPx in pixels. Convert pixels to NDC y.
+  // --- PROCEDURAL TEXTURE --------------------------------------------
+  // 2-D fBm keyed on (azimuth, depth-below-horizon). Panning shifts
+  // the noise horizontally in lock-step with the silhouette — no
+  // pop. Depth component uses (silY - vNdc.y) so the pattern scales
+  // naturally with ground distance. Amplitude is tiny (≈ ±5% of the
+  // base colour) so the texture reads as "surface variance" rather
+  // than "grainy".
+  float depth = silY - vNdc.y;
+  // Scale: ~12 azimuth-lattice points per FOV, ~8 depth-lattice
+  // points per unit. Combined with fbm2D's 2-octave average this
+  // produces soft mottled patches roughly 4–8° wide.
+  vec2 texUv = vec2(az * 6.0, depth * 22.0);
+  float nMacro = fbm2D(texUv);
+  // Signed variance centred at 0.
+  float macroVar = (nMacro - 0.5) * 2.0;
+  ground *= (1.0 + macroVar * 0.10);
+
+  // Stable 1-D azimuth shading — a broad cross-axis gradient so
+  // different facets of the hills catch light differently as the
+  // user pans. Adds depth without adding visual noise.
+  float azShade = valueNoise1D(az * 1.3 + uSilhouetteSeed * 0.21);
+  ground *= mix(0.85, 1.08, azShade);
+
+  // Fine pebble-grain highlights — 2-D hash keyed to discrete cells.
+  // Cells with hash > 0.985 light up as "pebbles". Amplitude is
+  // capped at +4% per channel so they're visible but never sparkly.
+  // Pebble density fades to zero in the upper 15% of the ground so
+  // the ridgeline stays clean (distant objects have no local detail).
+  float pebbleFade = smoothstep(0.0, 0.18, depth);
+  vec2 pebbleCell = floor(vec2(az * 180.0, depth * 260.0));
+  float pebbleHash = hash21(pebbleCell);
+  float pebble = step(0.985, pebbleHash) * pebbleFade;
+  ground += vec3(0.055, 0.040, 0.028) * pebble;
+
+  // --- DISTANCE HAZE -------------------------------------------------
+  // A soft atmospheric haze gradient strongest at the horizon seam,
+  // fading over ~uHazeHalfPx pixels downward. Covers the silhouette
+  // boundary and hides per-fragment aliasing. Only applied BELOW the
+  // smooth horizon (above is already sky).
   float ndcPerPx = 2.0 / uCanvasHeightPx;
   float halfBand = uHazeHalfPx * ndcPerPx;
-  float dist = abs(vNdc.y - uHorizonY);
-  float haze = smoothstep(halfBand, 0.0, dist) * uHazeAlpha;
-  vec3 colour = mix(ground, uHazeRgb, haze);
+  // Distance from the smooth horizon, measured downward (positive =
+  // deeper into the ground). Clamp at 0 so above-horizon fragments
+  // don't overshoot.
+  float distBelow = max(uHorizonY - vNdc.y, 0.0);
+  float hazeT = smoothstep(halfBand, 0.0, distBelow);
+  // Haze is strongest right at the seam. Use screen blend to lift
+  // the ground towards the haze tint without just overpainting.
+  vec3 withHaze = mix(ground, uHazeRgb, hazeT * uHazeAlpha);
+
+  // Guard against negative / super-bright channels from the cumulative
+  // multipliers above.
+  vec3 colour = clamp(withHaze, vec3(0.0), vec3(1.0));
 
   fragColor = vec4(colour, 1.0);
 }

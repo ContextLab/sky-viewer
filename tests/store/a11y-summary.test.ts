@@ -52,8 +52,8 @@ describe('a11y-summary — buildSummary (FR-018 template)', () => {
       ...DEFAULT_OBSERVATION,
       location: { lat: -33.9, lon: 151.2, label: null },
     });
-    expect(s).toContain('33.900°S');
-    expect(s).toContain('151.200°E');
+    expect(s).toContain('33.9000°S');
+    expect(s).toContain('151.2000°E');
   });
 });
 
