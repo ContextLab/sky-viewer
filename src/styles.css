@@ -1,36 +1,80 @@
-/* T008 — base styles. Dark-sky palette, fluid type, focus rings.
-   Kept small on purpose; shipped inlined in dist/index.html. */
 
 :root {
   color-scheme: dark;
-  --bg-night: #05070f;
-  --bg-astronomical: #0a1030;
-  --bg-nautical: #102860;
-  --bg-civil: #2c4a90;
-  --bg-day: #87b3e6;
 
-  --fg: #e8edf7;
-  --fg-muted: #9aa3b7;
-  --accent: #f5d76e;
-  --danger: #ff9a7a;
-  --focus: #ffe38a;
+  /* Sky palette */
+  --bg-night:        #04060d;
+  --bg-astronomical: #090e26;
+  --bg-nautical:     #0e2257;
+  --bg-civil:        #243e80;
+  --bg-day:          #7aa8d8;
 
-  --ui-bg: rgba(10, 14, 28, 0.82);
-  --ui-border: rgba(255, 255, 255, 0.12);
+  /* Foreground */
+  --fg:              #dde4f0;
+  --fg-muted:        #7b889e;
+  --fg-dim:          #4a5568;
 
-  --fs-sm: clamp(0.8rem, 0.9vw + 0.6rem, 0.95rem);
-  --fs-md: clamp(0.95rem, 1vw + 0.7rem, 1.1rem);
-  --fs-lg: clamp(1.2rem, 1.5vw + 0.8rem, 1.5rem);
+  /* Accent — amber, used ONLY for directional markers and active states */
+  --accent:          #f0c040;
+  --accent-glow:     rgba(240, 192, 64, 0.18);
+  --accent-active:   rgba(240, 192, 64, 0.15);
 
-  --ring: 0 0 0 3px var(--focus);
+  /* Danger */
+  --danger:          #e8745a;
+  --danger-bg:       rgba(232, 116, 90, 0.10);
+
+  /* Panel surfaces */
+  --ui-bg:           rgba(8, 12, 24, 0.80);
+  --ui-bg-hover:     rgba(14, 20, 38, 0.88);
+  --ui-border:       rgba(255, 255, 255, 0.09);
+  --ui-border-hover: rgba(255, 255, 255, 0.18);
+
+  /* Input surfaces */
+  --input-bg:        rgba(255, 255, 255, 0.05);
+  --input-bg-hover:  rgba(255, 255, 255, 0.09);
+
+  /* Focus ring */
+  --focus:           #f0c040;
+  --ring:            0 0 0 2px var(--bg-night), 0 0 0 4px var(--focus);
+
+  /* Spacing scale */
+  --sp-1: 4px;
+  --sp-2: 8px;
+  --sp-3: 12px;
+  --sp-4: 16px;
+  --sp-5: 24px;
+  --sp-6: 32px;
+
+  /* Panel geometry */
+  --panel-pad-x:  var(--sp-3);
+  --panel-pad-y:  var(--sp-3);
+  --panel-radius: 10px;
+  --panel-blur:   12px;
+  --panel-shadow: 0 2px 16px rgba(0, 0, 0, 0.45), 0 1px 0 rgba(255,255,255,0.04) inset;
+
+  /* Typography */
+  --font-sans: 'DM Sans', system-ui, -apple-system, sans-serif;
+  --font-mono: 'DM Mono', 'SF Mono', 'Fira Mono', monospace;
+
+  --fs-xs:  0.70rem;   /* 11.2px @ 16px root */
+  --fs-sm:  0.78rem;   /* 12.5px */
+  --fs-md:  0.875rem;  /* 14px   */
+  --fs-lg:  1.0rem;    /* 16px   */
+
+  /* Label tracking */
+  --ls-label: 0.06em;
+  --ls-readout: 0.02em;
+
+  /* Transition */
+  --t-fast:  120ms ease;
+  --t-mid:   220ms ease;
 }
 
-* {
+*, *::before, *::after {
   box-sizing: border-box;
 }
 
-html,
-body {
+html, body {
   margin: 0;
   padding: 0;
   width: 100%;
@@ -38,10 +82,12 @@ body {
   overflow: hidden;
   background: var(--bg-night);
   color: var(--fg);
-  font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
+  font-family: var(--font-sans);
   font-size: var(--fs-md);
-  line-height: 1.45;
+  font-weight: 400;
+  line-height: 1.5;
   -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
 main#app {
@@ -59,7 +105,6 @@ canvas#sky {
   height: 100%;
   display: block;
   background: var(--bg-night);
-  /* Kept visible in fallback + during load. */
 }
 
 .sr-only {
@@ -74,14 +119,20 @@ canvas#sky {
   border: 0;
 }
 
+:focus-visible {
+  outline: none;
+  box-shadow: var(--ring);
+  border-radius: calc(var(--panel-radius) - 2px);
+}
+
 .overlay {
   position: absolute;
   inset: 0;
   pointer-events: none;
   display: grid;
   grid-template-rows: auto 1fr auto;
-  padding: clamp(0.6rem, 2vw, 1.2rem);
-  gap: 0.6rem;
+  padding: clamp(var(--sp-2), 2vw, var(--sp-5));
+  gap: var(--sp-2);
 }
 
 .overlay > * {
@@ -91,76 +142,115 @@ canvas#sky {
 .panel {
   background: var(--ui-bg);
   border: 1px solid var(--ui-border);
-  border-radius: 0.65rem;
-  padding: 0.75rem 1rem;
-  backdrop-filter: blur(8px);
-  -webkit-backdrop-filter: blur(8px);
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.35);
+  border-radius: var(--panel-radius);
+  padding: var(--panel-pad-y) var(--panel-pad-x);
+  backdrop-filter: blur(var(--panel-blur)) saturate(1.4);
+  -webkit-backdrop-filter: blur(var(--panel-blur)) saturate(1.4);
+  box-shadow: var(--panel-shadow);
+  /* Auto-hide: panels dim when the user is idle (hover-capable devices only) */
+  transition: opacity var(--t-mid);
 }
 
 .row {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 0.65rem;
+  gap: var(--sp-2);
 }
 
 label {
   display: inline-flex;
   flex-direction: column;
-  gap: 0.2rem;
-  font-size: var(--fs-sm);
+  gap: var(--sp-1);
+  font-size: var(--fs-xs);
+  font-weight: 500;
+  letter-spacing: var(--ls-label);
+  text-transform: uppercase;
   color: var(--fg-muted);
+}
+
+.readout {
+  font-family: var(--font-mono);
+  font-size: var(--fs-sm);
+  font-weight: 400;
+  letter-spacing: var(--ls-readout);
+  color: var(--fg-muted);
+  font-variant-numeric: tabular-nums;
 }
 
 input[type="date"],
 input[type="time"],
 input[type="text"],
 input[type="number"],
-select,
-button {
-  background: rgba(255, 255, 255, 0.06);
+select {
+  background: var(--input-bg);
   color: var(--fg);
   border: 1px solid var(--ui-border);
-  border-radius: 0.4rem;
-  padding: 0.4rem 0.6rem;
+  border-radius: 6px;
+  padding: var(--sp-1) var(--sp-2);
   font-size: var(--fs-md);
-  font-family: inherit;
-  min-height: 2.2rem;
+  font-family: var(--font-sans);
+  min-height: 32px;
+  transition: border-color var(--t-fast), background var(--t-fast);
 }
 
-button {
+input[type="date"]:hover,
+input[type="time"]:hover,
+input[type="text"]:hover,
+input[type="number"]:hover,
+select:hover {
+  border-color: var(--ui-border-hover);
+  background: var(--input-bg-hover);
+}
+
+/* Calendar/clock icon colour on webkit */
+input[type="date"]::-webkit-calendar-picker-indicator,
+input[type="time"]::-webkit-calendar-picker-indicator {
+  filter: invert(0.6);
   cursor: pointer;
 }
 
+button {
+  background: var(--input-bg);
+  color: var(--fg);
+  border: 1px solid var(--ui-border);
+  border-radius: 6px;
+  padding: var(--sp-1) var(--sp-3);
+  font-size: var(--fs-md);
+  font-family: var(--font-sans);
+  font-weight: 500;
+  min-height: 32px;
+  cursor: pointer;
+  letter-spacing: 0.01em;
+  transition: background var(--t-fast), border-color var(--t-fast);
+}
+
 button:hover {
-  background: rgba(255, 255, 255, 0.11);
+  background: var(--input-bg-hover);
+  border-color: var(--ui-border-hover);
 }
 
 button[aria-pressed="true"] {
-  background: rgba(245, 215, 110, 0.22);
+  background: var(--accent-active);
   border-color: var(--accent);
-}
-
-:focus-visible {
-  outline: none;
-  box-shadow: var(--ring);
-  border-radius: 0.3rem;
+  color: var(--fg);
 }
 
 .banner {
   position: absolute;
-  top: 0.8rem;
+  top: var(--sp-3);
   left: 50%;
   transform: translateX(-50%);
-  background: rgba(180, 60, 40, 0.9);
+  background: rgba(200, 60, 40, 0.88);
   color: #fff;
-  padding: 0.5rem 0.9rem;
-  border-radius: 0.5rem;
+  padding: var(--sp-2) var(--sp-4);
+  border-radius: 8px;
   font-size: var(--fs-sm);
   max-width: min(92vw, 40rem);
   z-index: 20;
   box-shadow: 0 6px 20px rgba(0, 0, 0, 0.45);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
 }
 
 .banner[hidden] {
@@ -170,8 +260,24 @@ button[aria-pressed="true"] {
 .top-bar {
   display: flex;
   justify-content: space-between;
-  align-items: center;
-  gap: 0.5rem;
+  align-items: flex-start;
+  gap: var(--sp-2);
+  min-height: 0;
+}
+
+.top-bar .top-left {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: var(--sp-2);
+}
+
+.top-bar .top-right {
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: flex-start;
+  gap: var(--sp-2);
+  flex-shrink: 0;
 }
 
 .bottom-bar {
@@ -179,26 +285,18 @@ button[aria-pressed="true"] {
   justify-content: center;
 }
 
-.readout {
-  font-variant-numeric: tabular-nums;
-  color: var(--fg-muted);
-  font-size: var(--fs-sm);
-}
-
-@media (prefers-reduced-motion: reduce) {
-  * {
-    animation-duration: 0.01ms !important;
-    transition-duration: 0.01ms !important;
-  }
-}
-
-/* T057 — Compass widget. */
-.compass {
+.panel.compass,
+.panel.pitch-control,
+.panel.fov-control {
+  /* Uniform panel treatment */
   display: inline-flex;
   flex-direction: column;
   align-items: center;
-  gap: 0.3rem;
-  padding: 0.55rem 0.75rem;
+  gap: var(--sp-2);
+  padding: var(--panel-pad-y) var(--panel-pad-x);
+}
+
+.compass {
   user-select: none;
   -webkit-user-select: none;
 }
@@ -208,6 +306,7 @@ button[aria-pressed="true"] {
   touch-action: none;
   cursor: grab;
   border-radius: 50%;
+  transition: opacity var(--t-fast);
 }
 
 .compass .compass-svg:active {
@@ -221,40 +320,39 @@ button[aria-pressed="true"] {
 
 .compass .compass-label {
   pointer-events: none;
-  font-family: inherit;
+  font-family: var(--font-sans);
 }
 
 .compass-readout {
+  font-family: var(--font-mono);
   font-variant-numeric: tabular-nums;
   font-size: var(--fs-sm);
   color: var(--fg-muted);
+  letter-spacing: var(--ls-readout);
+  text-align: center;
+  white-space: nowrap;
 }
 
-/* T058 — FOV control indicator. */
 .fov-control {
-  display: inline-flex;
-  flex-direction: column;
-  gap: 0.35rem;
-  min-width: 9rem;
-  padding: 0.55rem 0.75rem;
+  min-width: 108px;
+  align-items: stretch !important;
+  gap: var(--sp-2) !important;
 }
 
 .fov-control .fov-readout {
+  font-family: var(--font-mono);
   font-variant-numeric: tabular-nums;
-  color: var(--fg);
   font-size: var(--fs-sm);
+  color: var(--fg);
+  letter-spacing: var(--ls-readout);
 }
 
 .fov-control .fov-bar {
   position: relative;
   width: 100%;
-  height: 6px;
-  border-radius: 3px;
-  background: linear-gradient(
-    to right,
-    rgba(245, 215, 110, 0.55) 0%,
-    rgba(255, 255, 255, 0.18) 100%
-  );
+  height: 4px;
+  border-radius: 2px;
+  background: rgba(255, 255, 255, 0.10);
   border: 1px solid var(--ui-border);
 }
 
@@ -267,18 +365,12 @@ button[aria-pressed="true"] {
   height: 10px;
   border-radius: 50%;
   background: var(--accent);
-  border: 1px solid rgba(0, 0, 0, 0.6);
+  border: 1.5px solid var(--bg-night);
   transform: translate(-50%, -50%);
-  box-shadow: 0 0 0 2px rgba(5, 7, 15, 0.6);
+  box-shadow: 0 0 6px var(--accent-glow);
 }
 
-/* Pitch (tilt) widget — vertical slider mirroring the compass style. */
 .pitch-control {
-  display: inline-flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 0.3rem;
-  padding: 0.55rem 0.75rem;
   user-select: none;
   -webkit-user-select: none;
 }
@@ -287,7 +379,7 @@ button[aria-pressed="true"] {
   display: block;
   touch-action: none;
   cursor: grab;
-  border-radius: 0.4rem;
+  border-radius: 4px;
 }
 
 .pitch-control .pitch-svg:active {
@@ -301,48 +393,54 @@ button[aria-pressed="true"] {
 
 .pitch-control .pitch-label {
   pointer-events: none;
-  font-family: inherit;
+  font-family: var(--font-mono);
   font-variant-numeric: tabular-nums;
 }
 
 .pitch-readout {
+  font-family: var(--font-mono);
   font-variant-numeric: tabular-nums;
   font-size: var(--fs-sm);
   color: var(--fg-muted);
+  letter-spacing: var(--ls-readout);
+  text-align: center;
+  white-space: nowrap;
 }
 
-/* Layer visibility toggle panel (collapsed → "Layers" button → checkbox group). */
 .layer-toggles {
   display: inline-flex;
   flex-direction: column;
   align-items: stretch;
-  gap: 0.4rem;
-  padding: 0.5rem 0.7rem;
-  min-width: 9rem;
+  gap: var(--sp-2);
+  padding: var(--sp-2) var(--sp-3);
+  min-width: 100px;
 }
 
 .layer-toggles .layer-toggles-summary {
   width: 100%;
   text-align: left;
   font-size: var(--fs-sm);
-  padding: 0.35rem 0.55rem;
+  font-weight: 500;
+  letter-spacing: 0.03em;
+  padding: var(--sp-1) var(--sp-2);
+  color: var(--fg);
 }
 
 .layer-toggles .layer-toggles-summary::before {
   content: "▸ ";
-  opacity: 0.7;
+  opacity: 0.55;
 }
 
 .layer-toggles .layer-toggles-summary[aria-expanded="true"]::before {
   content: "▾ ";
-  opacity: 0.9;
+  opacity: 0.75;
 }
 
 .layer-toggles .layer-toggles-group {
   display: flex;
   flex-direction: column;
-  gap: 0.3rem;
-  padding: 0.2rem 0.3rem 0.1rem;
+  gap: var(--sp-1);
+  padding: var(--sp-1) var(--sp-2);
 }
 
 .layer-toggles .layer-toggles-group[hidden] {
@@ -353,15 +451,15 @@ button[aria-pressed="true"] {
   display: flex;
   flex-direction: row;
   align-items: center;
-  gap: 0.5rem;
+  gap: var(--sp-2);
   font-size: var(--fs-sm);
   color: var(--fg);
   cursor: pointer;
 }
 
 .layer-toggles .layer-toggles-checkbox {
-  min-width: 1rem;
-  min-height: 1rem;
+  min-width: 14px;
+  min-height: 14px;
   accent-color: var(--accent);
 }
 
@@ -369,8 +467,6 @@ button[aria-pressed="true"] {
   flex: 1;
 }
 
-/* DOM overlay labels and hover/tap tooltip. The overlay element is
-   pointer-events: none (set in JS) so the canvas keeps all gestures. */
 .object-labels {
   position: absolute;
   inset: 0;
@@ -384,50 +480,69 @@ button[aria-pressed="true"] {
   inset: 0;
 }
 
+/* Base label — star names */
 .object-labels .object-labels-item {
   position: absolute;
   top: 0;
   left: 0;
   white-space: nowrap;
-  font-size: 0.8rem;
+  font-family: var(--font-sans);
+  font-size: var(--fs-xs);
+  font-weight: 400;
   line-height: 1;
   padding: 1px 4px;
   border-radius: 3px;
-  color: var(--fg);
-  background: rgba(10, 14, 28, 0.55);
-  text-shadow: 0 0 2px rgba(0, 0, 0, 0.85);
-  font-variant-numeric: tabular-nums;
+  color: rgba(200, 210, 235, 0.80);
+  background: rgba(4, 6, 13, 0.50);
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.90);
   pointer-events: none;
+  letter-spacing: 0.01em;
 }
 
+/* Planet names — slightly larger, accent-adjacent colour, bold */
 .object-labels .object-labels-planet {
-  color: var(--accent);
+  font-size: var(--fs-sm);
   font-weight: 600;
+  color: var(--accent);
+  background: rgba(4, 6, 13, 0.55);
+  letter-spacing: 0.02em;
 }
 
+/* Constellation names — the hierarchy anchor. Larger, caps-like, not italic */
 .object-labels .object-labels-constellation {
-  color: rgba(200, 210, 240, 0.95);
-  font-style: italic;
-  background: rgba(10, 14, 28, 0.35);
+  font-family: var(--font-sans);
+  font-size: var(--fs-sm);
+  font-weight: 300;
+  letter-spacing: 0.10em;
+  text-transform: uppercase;
+  font-style: normal;
+  color: rgba(180, 200, 240, 0.65);
+  background: rgba(4, 6, 13, 0.30);
+  text-shadow: 0 1px 4px rgba(0, 0, 0, 0.95), 0 0 12px rgba(4, 6, 13, 0.70);
+  padding: 2px 5px;
 }
 
+/* Star names — smallest, dimmest */
 .object-labels .object-labels-star {
-  color: rgba(245, 245, 255, 0.95);
+  color: rgba(215, 220, 240, 0.70);
+  background: rgba(4, 6, 13, 0.40);
 }
 
+/* Hover/tap tooltip */
 .object-labels .object-labels-tooltip {
   position: absolute;
   top: 0;
   left: 0;
   white-space: nowrap;
+  font-family: var(--font-sans);
   font-size: var(--fs-sm);
-  line-height: 1.1;
-  padding: 3px 7px;
-  border-radius: 4px;
-  background: rgba(10, 14, 28, 0.92);
+  line-height: 1.4;
+  padding: var(--sp-2) var(--sp-3);
+  border-radius: 6px;
+  background: rgba(8, 12, 24, 0.94);
   color: var(--fg);
-  border: 1px solid var(--ui-border);
-  box-shadow: 0 3px 10px rgba(0, 0, 0, 0.4);
+  border: 1px solid var(--ui-border-hover);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.55);
   pointer-events: none;
   z-index: 6;
 }
@@ -436,55 +551,44 @@ button[aria-pressed="true"] {
   display: none;
 }
 
-/* Night Mode — live GPS + compass slaving. */
 .night-mode {
   display: inline-flex;
   flex-direction: column;
   align-items: stretch;
-  gap: 0.4rem;
-  padding: 0.5rem 0.7rem;
-  min-width: 9rem;
+  gap: var(--sp-2);
+  padding: var(--sp-2) var(--sp-3);
+  min-width: 100px;
   position: relative;
 }
 
 .night-mode .night-mode-button {
-  background: linear-gradient(
-    135deg,
-    rgba(80, 60, 160, 0.45) 0%,
-    rgba(20, 30, 80, 0.55) 100%
-  );
+  background: var(--input-bg);
   color: var(--fg);
-  border: 1px solid rgba(200, 180, 255, 0.45);
-  font-weight: 600;
-  letter-spacing: 0.01em;
-  padding: 0.45rem 0.7rem;
-  min-height: 2.4rem;
+  border: 1px solid var(--ui-border);
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  padding: var(--sp-1) var(--sp-3);
+  min-height: 32px;
   white-space: nowrap;
 }
 
 .night-mode .night-mode-button:hover {
-  background: linear-gradient(
-    135deg,
-    rgba(110, 85, 200, 0.55) 0%,
-    rgba(35, 45, 110, 0.65) 100%
-  );
+  background: var(--input-bg-hover);
+  border-color: var(--ui-border-hover);
 }
 
 .night-mode .night-mode-button[aria-pressed="true"] {
-  background: linear-gradient(
-    135deg,
-    rgba(245, 215, 110, 0.35) 0%,
-    rgba(180, 120, 60, 0.45) 100%
-  );
+  background: var(--accent-active);
   border-color: var(--accent);
-  color: var(--fg);
 }
 
 .night-mode .night-mode-status {
-  font-size: var(--fs-sm);
+  font-family: var(--font-mono);
+  font-size: var(--fs-xs);
   color: var(--accent);
-  font-weight: 500;
-  padding: 0.1rem 0.2rem;
+  font-weight: 400;
+  letter-spacing: 0.03em;
+  padding: 0 var(--sp-1);
 }
 
 .night-mode .night-mode-status[hidden] {
@@ -492,13 +596,14 @@ button[aria-pressed="true"] {
 }
 
 .night-mode .night-mode-calibration {
-  font-size: calc(var(--fs-sm) * 0.92);
+  font-family: var(--font-sans);
+  font-size: var(--fs-xs);
   color: var(--fg-muted);
-  line-height: 1.3;
-  padding: 0.2rem 0.3rem;
+  line-height: 1.4;
+  padding: var(--sp-1) var(--sp-2);
   border-left: 2px solid var(--danger);
-  background: rgba(255, 154, 122, 0.08);
-  border-radius: 0 0.3rem 0.3rem 0;
+  background: var(--danger-bg);
+  border-radius: 0 4px 4px 0;
 }
 
 .night-mode .night-mode-calibration[hidden] {
@@ -507,18 +612,90 @@ button[aria-pressed="true"] {
 
 .night-mode .night-mode-toast {
   position: absolute;
-  top: calc(100% + 0.4rem);
+  top: calc(100% + var(--sp-2));
   right: 0;
-  background: rgba(180, 60, 40, 0.92);
+  background: rgba(180, 50, 30, 0.93);
   color: #fff;
-  padding: 0.4rem 0.7rem;
-  border-radius: 0.4rem;
+  padding: var(--sp-2) var(--sp-3);
+  border-radius: 6px;
   font-size: var(--fs-sm);
   max-width: 18rem;
-  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.5);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.55);
   z-index: 15;
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
 }
 
 .night-mode .night-mode-toast[hidden] {
   display: none;
+}
+
+@media (hover: hover) {
+  .overlay.ui-idle .panel {
+    opacity: 0.35;
+  }
+  .overlay.ui-idle .panel:hover,
+  .overlay.ui-idle .panel:focus-within {
+    opacity: 1;
+  }
+  .panel {
+    transition: opacity 600ms ease;
+  }
+}
+
+@media (max-width: 600px) {
+  .top-bar {
+    align-items: flex-start;
+    flex-wrap: nowrap;
+  }
+
+  .top-bar .top-right {
+    /* Becomes a fixed vertical dock on the right edge */
+    position: fixed;
+    top: clamp(var(--sp-2), 2vw, var(--sp-4));
+    right: clamp(var(--sp-2), 2vw, var(--sp-4));
+    flex-direction: column;
+    align-items: flex-end;
+    flex-wrap: nowrap;
+    gap: var(--sp-2);
+    max-width: 140px;
+    z-index: 10;
+    pointer-events: auto;
+  }
+
+    .top-bar .top-left {
+    max-width: calc(100vw - 160px);
+  }
+
+  /* All instrument panels in the right dock go full-width */
+  .top-bar .top-right .panel {
+    width: 100%;
+  }
+
+  /* Compass and pitch SVGs stay their intrinsic sizes */
+  .panel.compass,
+  .panel.pitch-control {
+    align-items: center;
+  }
+
+  /* FOV bar needs to fill its panel */
+  .fov-control {
+    min-width: 90px;
+  }
+
+  /* Readouts inside instrument panels: keep but clip if needed */
+  .compass-readout,
+  .pitch-readout {
+    font-size: var(--fs-xs);
+    max-width: 120px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
 }

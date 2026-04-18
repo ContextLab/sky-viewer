@@ -6,6 +6,10 @@
     <meta name="theme-color" content="#05070f" />
     <meta name="description" content="Pick a date, location, and direction — see the sky." />
     <title>Sky-viewer</title>
+    <!-- FR-001/FR-013: no external runtime calls. UI falls back to the
+         system font stack defined in app.css. A future polish pass may
+         self-host DM Sans / DM Mono as bundled woff2 to get the intended
+         typography without a CDN fetch. -->
     <link rel="stylesheet" href="./app.css" />
   </head>
   <body>

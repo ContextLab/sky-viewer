@@ -351,9 +351,9 @@ async function boot(): Promise<void> {
   const topBar = document.createElement("div");
   topBar.className = "top-bar";
   const topLeft = document.createElement("div");
-  topLeft.className = "row";
+  topLeft.className = "row top-left";
   const topRight = document.createElement("div");
-  topRight.className = "row";
+  topRight.className = "row top-right";
   topBar.append(topLeft, topRight);
 
   const middle = document.createElement("div"); // empty; canvas shows through
@@ -367,6 +367,21 @@ async function boot(): Promise<void> {
   sidePanel.style.bottom = "5.5rem";
 
   overlay.append(topBar, middle, bottomBar, sidePanel);
+
+  // Auto-hide: dim panels after 4 s of no pointer movement.
+  // Only activates on hover-capable devices (@media (hover: hover) in CSS).
+  let idleTimer: ReturnType<typeof setTimeout> | null = null;
+  const IDLE_MS = 4000;
+  const resetIdle = (): void => {
+    overlay.classList.remove("ui-idle");
+    if (idleTimer !== null) clearTimeout(idleTimer);
+    idleTimer = setTimeout(() => overlay.classList.add("ui-idle"), IDLE_MS);
+  };
+  overlay.addEventListener("pointermove", resetIdle, { passive: true });
+  overlay.addEventListener("pointerdown", resetIdle, { passive: true });
+  canvas.addEventListener("pointermove", resetIdle, { passive: true });
+  canvas.addEventListener("pointerdown", resetIdle, { passive: true });
+  resetIdle();
 
   // Renderer. Reveal the canvas only once it's configured.
   const dpr = Math.min(window.devicePixelRatio || 1, 2);
