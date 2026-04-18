@@ -430,7 +430,7 @@ function updateButtonUi(): void {
   buttonEl.setAttribute("aria-pressed", String(isActive));
   // Compass-rose glyph signals "point the phone at the sky" better than
   // the old crescent-moon glyph did.
-  buttonEl.textContent = isActive ? "\u25C9 Exit Live Mode" : "\u25CE Live Mode";
+  buttonEl.textContent = isActive ? "\u25C9 Exit Live View" : "\u25CE Live View";
   buttonEl.title = isActive
     ? "Stop using device sensors and return to manual control"
     : "Use device GPS + compass to align the sky with what you're pointing at";
@@ -466,7 +466,7 @@ export function mountNightModeToggle(parent: HTMLElement): void {
   status.className = "night-mode-status";
   status.setAttribute("role", "status");
   status.setAttribute("aria-live", "polite");
-  status.textContent = "Live Mode \u2022 GPS + compass";
+  status.textContent = "Live View \u2022 GPS + compass";
   status.hidden = true;
   statusBannerEl = status;
 

@@ -43,8 +43,8 @@ function updateButtonUi(): void {
   buttonEl.setAttribute("aria-pressed", String(isActive));
   // A circled-dot glyph evokes a red lamp / observatory bulb.
   buttonEl.textContent = isActive
-    ? "\u25A0 Exit Red Light"
-    : "\u25CF Red Light Mode";
+    ? "\u25A0 Exit Night Vision"
+    : "\u25CF Night Vision Mode";
   buttonEl.title = isActive
     ? "Turn off the red night-vision overlay"
     : "Apply a red overlay to preserve dark-adapted night vision (astronomer's red-light mode)";

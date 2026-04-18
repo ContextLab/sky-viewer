@@ -96,12 +96,13 @@ export function mountSkyGestures(canvas: HTMLCanvasElement): void {
     // speed matches the on-screen angular speed the user is reading.
     const aspectInverse = h / w;
 
-    // Positive dx (finger moves right) → bearing increases, i.e. view
-    // rotates to the right.
-    const dBearingDeg = (dx / w) * fovDeg;
-    // Positive dy (finger moves DOWN) → pitch increases, i.e. the
-    // view appears to "look up". This mirrors a map/panorama's pull
-    // gesture: dragging the sky down brings the upper sky into view.
+    // Bearing: "grab the sky and drag" — finger right → sky moves
+    //   right, view rotates LEFT (bearing decreases). This matches the
+    //   feel of pulling a panorama around you.
+    const dBearingDeg = -(dx / w) * fovDeg;
+    // Pitch: finger moves DOWN (dy > 0) → view pitches UP. Keeps the
+    // panorama-pull metaphor: drag the sky downwards to bring overhead
+    // into view.
     const dPitchDeg = (dy / h) * fovDeg * aspectInverse;
 
     const nextBearing = obs.bearingDeg + dBearingDeg;

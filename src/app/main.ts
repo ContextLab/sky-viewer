@@ -361,13 +361,20 @@ async function boot(): Promise<void> {
   const bottomBar = document.createElement("div");
   bottomBar.className = "bottom-bar row";
 
-  const sidePanel = document.createElement("div");
-  sidePanel.className = "row";
-  sidePanel.style.position = "absolute";
-  sidePanel.style.right = "clamp(0.6rem, 2vw, 1.2rem)";
-  sidePanel.style.bottom = "5.5rem";
+  // Bottom bar: playback centred; Layers selector flush-right so its
+  // right edge lines up with the Night Vision Mode button in the top-right.
+  bottomBar.style.justifyContent = "space-between";
+  bottomBar.style.alignItems = "flex-end";
+  const bottomLeft = document.createElement("div");
+  bottomLeft.style.flex = "1";
+  const playbackSlot = document.createElement("div");
+  const bottomRight = document.createElement("div");
+  bottomRight.className = "row";
+  bottomRight.style.flex = "1";
+  bottomRight.style.justifyContent = "flex-end";
+  bottomBar.append(bottomLeft, playbackSlot, bottomRight);
 
-  overlay.append(topBar, middle, bottomBar, sidePanel);
+  overlay.append(topBar, middle, bottomBar);
 
   // Auto-hide: dim panels after 4 s of no pointer movement.
   // Only activates on hover-capable devices (@media (hover: hover) in CSS).
@@ -407,8 +414,8 @@ async function boot(): Promise<void> {
   mountCompass(topRight);
   mountPitchControl(topRight);
   mountSkyGestures(canvas);
-  mountPlaybackControl(bottomBar, playback);
-  mountLayerToggles(sidePanel);
+  mountPlaybackControl(playbackSlot, playback);
+  mountLayerToggles(bottomRight);
   mountNightModeToggle(topRight);
   mountRedLightMode(topRight);
 

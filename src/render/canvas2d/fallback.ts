@@ -335,6 +335,10 @@ export function createCanvas2DRenderer(canvas: HTMLCanvasElement): Renderer {
         // would otherwise paint through the ground silhouette (same
         // reasoning as the WebGL2 line pass).
         if (!isAboveHorizon(a.altDeg) || !isAboveHorizon(b.altDeg)) continue;
+        // Drop wrap-around lines (endpoints on opposite sides of observer).
+        let dAz = Math.abs(a.azDeg - b.azDeg);
+        if (dAz > 180) dAz = 360 - dAz;
+        if (dAz > 90) continue;
         const pa = projectAltAzDegToNdc(a.altDeg, a.azDeg, bearingRad, pitchRad, fovRad, aspect);
         const pb = projectAltAzDegToNdc(b.altDeg, b.azDeg, bearingRad, pitchRad, fovRad, aspect);
         if (!pa || !pb) continue;

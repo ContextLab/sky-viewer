@@ -136,6 +136,13 @@ export class LinePass {
         // the ground silhouette (the ground pass cannot depth-cull
         // lines that are drawn after it).
         if (!isAboveHorizon(a.altDeg) || !isAboveHorizon(b.altDeg)) continue;
+        // Drop lines whose endpoints straddle the observer — they'd
+        // rasterize as a streak across the whole visible hemisphere
+        // after GPU projection. Real constellation lines are short
+        // (<20° typical), so 90° is a safe cutoff.
+        let dAz = Math.abs(a.azDeg - b.azDeg);
+        if (dAz > 180) dAz = 360 - dAz;
+        if (dAz > 90) continue;
         this.vertexData[write] = a.altDeg * DEG2RAD;
         this.vertexData[write + 1] = a.azDeg * DEG2RAD;
         this.vertexData[write + 2] = b.altDeg * DEG2RAD;
