@@ -20,6 +20,7 @@ const FLOATS_PER_VERTEX = 2; // altRad, azRad
 
 export interface LinePassUniforms {
   bearingRad: number;
+  pitchRad: number;
   fovRad: number;
   aspect: number;
   color: [number, number, number, number];
@@ -32,6 +33,7 @@ export class LinePass {
   private readonly buffer: WebGLBuffer;
 
   private readonly uBearing: WebGLUniformLocation | null;
+  private readonly uPitch: WebGLUniformLocation | null;
   private readonly uFov: WebGLUniformLocation | null;
   private readonly uAspect: WebGLUniformLocation | null;
   private readonly uColor: WebGLUniformLocation | null;
@@ -44,6 +46,7 @@ export class LinePass {
     this.program = compileProgram(gl, LINE_VERT, LINE_FRAG);
 
     this.uBearing = gl.getUniformLocation(this.program, 'uBearingRad');
+    this.uPitch = gl.getUniformLocation(this.program, 'uPitchRad');
     this.uFov = gl.getUniformLocation(this.program, 'uFovRad');
     this.uAspect = gl.getUniformLocation(this.program, 'uAspect');
     this.uColor = gl.getUniformLocation(this.program, 'uLineColor');
@@ -152,6 +155,7 @@ export class LinePass {
     gl.useProgram(this.program);
     gl.bindVertexArray(this.vao);
     gl.uniform1f(this.uBearing, u.bearingRad);
+    gl.uniform1f(this.uPitch, u.pitchRad);
     gl.uniform1f(this.uFov, u.fovRad);
     gl.uniform1f(this.uAspect, u.aspect);
     gl.uniform4f(this.uColor, u.color[0], u.color[1], u.color[2], u.color[3]);

@@ -12,6 +12,13 @@ import {
   setObservation,
   subscribe,
 } from "./observation-store";
+import { DEFAULT_OBSERVATION } from "./types";
+import {
+  buildCurrentTimeDefaultAtMooreHall,
+  buildGeolocatedDefault,
+  composeGeolocatedObservation,
+} from "./default-observation";
+import { nearestCity } from "../ui/nearest-city";
 import { updateSummary } from "./a11y-summary";
 import { parseStarCatalogue } from "../astro/stars";
 import type { Star } from "../astro/stars";
@@ -32,9 +39,20 @@ import {
 } from "../ui/playback-control";
 import { mountCaveatBanner } from "../ui/caveat-banner";
 import { mountCompass } from "../ui/compass";
+import { mountPitchControl } from "../ui/pitch-control";
+import { mountSkyGestures } from "../ui/sky-gestures";
 import { mountFovControl } from "../ui/fov-control";
 import { mountMapPicker } from "../ui/map-picker";
 import { loadTzTable, resolveTz } from "../ui/tz-resolver";
+import { mountLayerToggles } from "../ui/layer-toggles";
+import { mountObjectLabels, type LabelableObjects } from "../ui/object-labels";
+import { STAR_NAMES } from "../astro/star-names";
+import { precessStarToEpoch } from "../astro/stars";
+import {
+  projectAltAzDegToNdc,
+  ndcToCssPixels,
+  isAboveHorizon,
+} from "../render/projection";
 
 // ---------- Data loading ----------
 
@@ -110,12 +128,216 @@ function computeBodies(utcMs: number, latRad: number, lonRad: number): RenderBod
   return out;
 }
 
+// ---------- Label projection for the DOM overlay ----------
+//
+// The renderer projects the same objects on the GPU (and in Canvas2D) but
+// doesn't expose the screen-space results. For the hover/tap overlay we
+// re-project a small curated subset (the ~named bright stars, all planets,
+// constellation centroids) each frame in app code. The volumes involved are
+// tiny (< 120 items) so the extra CPU cost is negligible compared to the
+// per-frame astro already done above.
+
+const BODY_DISPLAY_NAMES: Record<string, string> = {
+  sun: "Sun",
+  moon: "Moon",
+  mercury: "Mercury",
+  venus: "Venus",
+  mars: "Mars",
+  jupiter: "Jupiter",
+  saturn: "Saturn",
+  uranus: "Uranus",
+  neptune: "Neptune",
+};
+
+function computeLabels(
+  state: SkyState,
+  datasets: SkyDatasets,
+  widthCss: number,
+  heightCss: number
+): LabelableObjects {
+  const obs = state.observation;
+  const bearingRad = (obs.bearingDeg * Math.PI) / 180;
+  const pitchRad = (obs.pitchDeg * Math.PI) / 180;
+  const fovRad = (obs.fovDeg * Math.PI) / 180;
+  const aspect = widthCss > 0 && heightCss > 0 ? widthCss / heightCss : 1;
+  const latRad = (obs.location.lat * Math.PI) / 180;
+  const lonRad = (obs.location.lon * Math.PI) / 180;
+
+  const stars: LabelableObjects["stars"] = [];
+  const planets: LabelableObjects["planets"] = [];
+  const constellationCentroids: LabelableObjects["constellationCentroids"] = [];
+
+  // Planets (and Sun/Moon as "planets" for picking purposes).
+  for (const body of state.bodies) {
+    if (!isAboveHorizon(body.altDeg)) continue;
+    const ndc = projectAltAzDegToNdc(
+      body.altDeg,
+      body.azDeg,
+      bearingRad,
+      pitchRad,
+      fovRad,
+      aspect
+    );
+    if (!ndc) continue;
+    if (Math.abs(ndc.x) > 1.1 || Math.abs(ndc.y) > 1.1) continue;
+    const { px, py } = ndcToCssPixels(ndc.x, ndc.y, widthCss, heightCss);
+    const name = BODY_DISPLAY_NAMES[body.id] ?? body.id;
+    planets.push({ body: body.id, screenX: px, screenY: py, name });
+  }
+
+  // Named bright stars. We walk the whole catalogue only for entries that
+  // have an STAR_NAMES mapping — typically ~80 items — so the loop is cheap.
+  for (const star of datasets.stars) {
+    const name = STAR_NAMES[star.id];
+    if (!name) continue;
+    const app = precessStarToEpoch(
+      star.raJ2000Rad,
+      star.decJ2000Rad,
+      star.pmRaMasPerYr,
+      star.pmDecMasPerYr,
+      state.utcMs
+    );
+    const h = equatorialToHorizontal(app.ra, app.dec, latRad, lonRad, state.utcMs);
+    if (!isAboveHorizon(h.altDeg)) continue;
+    const ndc = projectAltAzDegToNdc(h.altDeg, h.azDeg, bearingRad, pitchRad, fovRad, aspect);
+    if (!ndc) continue;
+    if (Math.abs(ndc.x) > 1.1 || Math.abs(ndc.y) > 1.1) continue;
+    const { px, py } = ndcToCssPixels(ndc.x, ndc.y, widthCss, heightCss);
+    stars.push({
+      starId: star.id,
+      screenX: px,
+      screenY: py,
+      name,
+      magnitude: star.vmag,
+    });
+  }
+
+  // Constellation centroids: project each endpoint that's on-screen, then
+  // centroid-average the pixel coords. This is an approximation (true
+  // centroid on the sphere would be more complex) but matches the "rough
+  // middle of the visible figure" the UI wants.
+  if (datasets.constellations.length > 0 && datasets.stars.length > 0) {
+    // Build a one-shot HR -> Star index so the constellation lines don't
+    // walk the whole catalogue per segment. O(N) build, done once per frame.
+    const starById = new Map<number, Star>();
+    for (const s of datasets.stars) starById.set(s.id, s);
+
+    for (const cons of datasets.constellations) {
+      let sx = 0;
+      let sy = 0;
+      let n = 0;
+      const endpoints = new Set<number>();
+      for (const [a, b] of cons.lines) {
+        endpoints.add(a);
+        endpoints.add(b);
+      }
+      for (const hr of endpoints) {
+        const star = starById.get(hr);
+        if (!star) continue;
+        const app = precessStarToEpoch(
+          star.raJ2000Rad,
+          star.decJ2000Rad,
+          star.pmRaMasPerYr,
+          star.pmDecMasPerYr,
+          state.utcMs
+        );
+        const h = equatorialToHorizontal(app.ra, app.dec, latRad, lonRad, state.utcMs);
+        if (!isAboveHorizon(h.altDeg)) continue;
+        const ndc = projectAltAzDegToNdc(h.altDeg, h.azDeg, bearingRad, pitchRad, fovRad, aspect);
+        if (!ndc) continue;
+        if (Math.abs(ndc.x) > 1.1 || Math.abs(ndc.y) > 1.1) continue;
+        const px = ndcToCssPixels(ndc.x, ndc.y, widthCss, heightCss);
+        sx += px.px;
+        sy += px.py;
+        n++;
+      }
+      // Require at least 3 on-screen endpoints for a meaningful centroid.
+      if (n >= 3) {
+        constellationCentroids.push({
+          abbr: cons.name,
+          fullName: cons.fullName,
+          screenX: sx / n,
+          screenY: sy / n,
+        });
+      }
+    }
+  }
+
+  return { stars, planets, constellationCentroids };
+}
+
 // ---------- Boot ----------
 
 function getEl<T extends HTMLElement>(id: string): T {
   const el = document.getElementById(id);
   if (!el) throw new Error(`missing #${id}`);
   return el as T;
+}
+
+// Interface matches what src/ui/map-picker.ts loads from data/cities.json.
+interface CityRecord {
+  name: string;
+  asciiName: string;
+  country: string;
+  lat: number;
+  lon: number;
+  population: number;
+}
+
+async function fetchCitiesForLabel(): Promise<CityRecord[] | null> {
+  try {
+    const r = await fetch("./data/cities.json");
+    if (!r.ok) return null;
+    return (await r.json()) as CityRecord[];
+  } catch {
+    return null;
+  }
+}
+
+// Is the current store state still the 1969 Moore Hall easter-egg default?
+function isBaselineDefault(): boolean {
+  const obs = getObservation();
+  return obs.utcInstant === DEFAULT_OBSERVATION.utcInstant;
+}
+
+async function upgradeDefaultObservation(): Promise<void> {
+  if (!isBaselineDefault()) return; // user had a persisted observation
+
+  const geo = await buildGeolocatedDefault();
+  // Re-check baseline in case the user mutated state while we were waiting
+  // on the permission prompt (map picker, manual date edit, etc.).
+  if (!isBaselineDefault()) return;
+
+  if (!geo) {
+    setObservation(buildCurrentTimeDefaultAtMooreHall());
+    return;
+  }
+
+  // Resolve tz for the geolocated position. If the tz table failed to load
+  // we fall through to Moore-Hall-now rather than inventing an offset.
+  let timeZone: string;
+  let utcOffsetMinutes: number;
+  try {
+    const tz = resolveTz(geo.lat, geo.lon, geo.utcMs);
+    timeZone = tz.zone;
+    utcOffsetMinutes = tz.offsetMinutes;
+  } catch {
+    setObservation(buildCurrentTimeDefaultAtMooreHall());
+    return;
+  }
+
+  // Nearest-city label is best-effort; absence is fine.
+  let label: string | null = "Current location";
+  const cities = await fetchCitiesForLabel();
+  if (cities && cities.length > 0) {
+    const near = nearestCity(geo.lat, geo.lon, cities);
+    if (near) label = `Near ${near.name}`;
+  }
+
+  if (!isBaselineDefault()) return;
+  setObservation(
+    composeGeolocatedObservation(geo, timeZone, utcOffsetMinutes, label)
+  );
 }
 
 async function boot(): Promise<void> {
@@ -166,7 +388,21 @@ async function boot(): Promise<void> {
   mountDateTimeInput(topLeft);
   mountFovControl(canvas, topRight);
   mountCompass(topRight);
+  mountPitchControl(topRight);
+  mountSkyGestures(canvas);
   mountPlaybackControl(bottomBar, playback);
+  mountLayerToggles(sidePanel);
+
+  // DOM overlay labels. `currentLabels` is updated each frame below; the
+  // overlay reads it via the getter so we don't have to call setters from
+  // the render loop or couple the two modules to a shared module-level
+  // binding.
+  let currentLabels: LabelableObjects = {
+    stars: [],
+    planets: [],
+    constellationCentroids: [],
+  };
+  mountObjectLabels(canvas, () => currentLabels);
 
   // Live a11y summary.
   const refreshSummary = () => updateSummary(getObservation(), summaryEl);
@@ -205,6 +441,11 @@ async function boot(): Promise<void> {
     };
     void twilightPhase; // imported for potential future use (a11y twilight label)
     renderer.render(state, datasets);
+    // Recompute label screen positions for the DOM overlay. This is a cheap
+    // re-project of a curated subset (~80 named stars + planets +
+    // constellation centroids) and runs on the CPU — keeping it in-frame
+    // ensures labels stay pinned to their objects during pan/zoom.
+    currentLabels = computeLabels(state, datasets, window.innerWidth, window.innerHeight);
     requestAnimationFrame(frame);
   };
   requestAnimationFrame(frame);
@@ -226,6 +467,13 @@ async function boot(): Promise<void> {
     console.error("dataset load failed", err);
     tzReady(); // unblock the map picker even if tz table failed
   }
+
+  // Default-observation upgrade: if the store ended up with the baseline
+  // DEFAULT_OBSERVATION (no persisted state), try to use the user's current
+  // location + wall time. On denial / timeout, fall back to Moore Hall at
+  // the current wall time (not the 1969 easter-egg instant).
+  void upgradeDefaultObservation();
+  // ----
 
   // Map picker needs the tz table loaded to compute offsets on pick.
   mountMapPicker(topLeft, tzLoadedPromise, (pick) => {

@@ -36,6 +36,12 @@ export function loadPersisted(): Observation | null {
     if (typeof parsed.bearingDeg !== "number") return null;
     if (typeof parsed.fovDeg !== "number") return null;
     if (!parsed.playback || typeof parsed.playback !== "object") return null;
+    // Forward-compat: pre-pitch observations lack pitchDeg. Default to 0
+    // (= looking at horizon, the legacy behaviour) so old persisted state
+    // loads cleanly.
+    if (typeof parsed.pitchDeg !== "number") {
+      parsed.pitchDeg = 0;
+    }
     return parsed as Observation;
   } catch {
     return null;

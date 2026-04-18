@@ -27,6 +27,7 @@ const MAX_BODIES = 10;
 
 export interface PlanetPassUniforms {
   bearingRad: number;
+  pitchRad: number;
   fovRad: number;
   aspect: number;
   timeSec: number;
@@ -78,6 +79,7 @@ export class PlanetPass {
   private readonly instanceBuffer: WebGLBuffer;
 
   private readonly uBearing: WebGLUniformLocation | null;
+  private readonly uPitch: WebGLUniformLocation | null;
   private readonly uFov: WebGLUniformLocation | null;
   private readonly uAspect: WebGLUniformLocation | null;
   private readonly uTime: WebGLUniformLocation | null;
@@ -91,6 +93,7 @@ export class PlanetPass {
     this.program = compileProgram(gl, PLANET_VERT, PLANET_FRAG);
 
     this.uBearing = gl.getUniformLocation(this.program, 'uBearingRad');
+    this.uPitch = gl.getUniformLocation(this.program, 'uPitchRad');
     this.uFov = gl.getUniformLocation(this.program, 'uFovRad');
     this.uAspect = gl.getUniformLocation(this.program, 'uAspect');
     this.uTime = gl.getUniformLocation(this.program, 'uTime');
@@ -189,6 +192,7 @@ export class PlanetPass {
     gl.useProgram(this.program);
     gl.bindVertexArray(this.vao);
     gl.uniform1f(this.uBearing, u.bearingRad);
+    gl.uniform1f(this.uPitch, u.pitchRad);
     gl.uniform1f(this.uFov, u.fovRad);
     gl.uniform1f(this.uAspect, u.aspect);
     gl.uniform1f(this.uTime, u.timeSec);

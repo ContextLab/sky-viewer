@@ -78,6 +78,7 @@ export function createCanvas2DRenderer(canvas: HTMLCanvasElement): Renderer {
   function renderOne(state: SkyState, datasets: SkyDatasets): void {
     const obs = state.observation;
     const bearingRad = obs.bearingDeg * DEG2RAD;
+    const pitchRad = obs.pitchDeg * DEG2RAD;
     const fovRad = obs.fovDeg * DEG2RAD;
     const aspect = cssWidth / cssHeight;
 
@@ -110,7 +111,7 @@ export function createCanvas2DRenderer(canvas: HTMLCanvasElement): Renderer {
     // 2. Stars. `projById` was already magnitude-filtered.
     for (const p of projById.values()) {
       if (!isAboveHorizon(p.altDeg)) continue;
-      const ndc = projectAltAzDegToNdc(p.altDeg, p.azDeg, bearingRad, fovRad, aspect);
+      const ndc = projectAltAzDegToNdc(p.altDeg, p.azDeg, bearingRad, pitchRad, fovRad, aspect);
       if (!ndc) continue;
       if (Math.abs(ndc.x) > 1.05 || Math.abs(ndc.y) > 1.05) continue;
       const { px, py } = ndcToCssPixels(ndc.x, ndc.y, cssWidth, cssHeight);
@@ -165,8 +166,8 @@ export function createCanvas2DRenderer(canvas: HTMLCanvasElement): Renderer {
           lineCache.set(hr2, b);
         }
         if (!isAboveHorizon(a.altDeg) && !isAboveHorizon(b.altDeg)) continue;
-        const pa = projectAltAzDegToNdc(a.altDeg, a.azDeg, bearingRad, fovRad, aspect);
-        const pb = projectAltAzDegToNdc(b.altDeg, b.azDeg, bearingRad, fovRad, aspect);
+        const pa = projectAltAzDegToNdc(a.altDeg, a.azDeg, bearingRad, pitchRad, fovRad, aspect);
+        const pb = projectAltAzDegToNdc(b.altDeg, b.azDeg, bearingRad, pitchRad, fovRad, aspect);
         if (!pa || !pb) continue;
         const A = ndcToCssPixels(pa.x, pa.y, cssWidth, cssHeight);
         const B = ndcToCssPixels(pb.x, pb.y, cssWidth, cssHeight);
@@ -183,7 +184,7 @@ export function createCanvas2DRenderer(canvas: HTMLCanvasElement): Renderer {
     for (let i = 0; i < state.bodies.length; i++) {
       const body = state.bodies[i]!;
       if (!isAboveHorizon(body.altDeg)) continue;
-      const ndc = projectAltAzDegToNdc(body.altDeg, body.azDeg, bearingRad, fovRad, aspect);
+      const ndc = projectAltAzDegToNdc(body.altDeg, body.azDeg, bearingRad, pitchRad, fovRad, aspect);
       if (!ndc) continue;
       if (Math.abs(ndc.x) > 1.05 || Math.abs(ndc.y) > 1.05) continue;
       const { px, py } = ndcToCssPixels(ndc.x, ndc.y, cssWidth, cssHeight);

@@ -271,3 +271,167 @@ button[aria-pressed="true"] {
   transform: translate(-50%, -50%);
   box-shadow: 0 0 0 2px rgba(5, 7, 15, 0.6);
 }
+
+/* Pitch (tilt) widget — vertical slider mirroring the compass style. */
+.pitch-control {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.55rem 0.75rem;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.pitch-control .pitch-svg {
+  display: block;
+  touch-action: none;
+  cursor: grab;
+  border-radius: 0.4rem;
+}
+
+.pitch-control .pitch-svg:active {
+  cursor: grabbing;
+}
+
+.pitch-control .pitch-svg:focus-visible {
+  outline: none;
+  box-shadow: var(--ring);
+}
+
+.pitch-control .pitch-label {
+  pointer-events: none;
+  font-family: inherit;
+  font-variant-numeric: tabular-nums;
+}
+
+.pitch-readout {
+  font-variant-numeric: tabular-nums;
+  font-size: var(--fs-sm);
+  color: var(--fg-muted);
+}
+
+/* Layer visibility toggle panel (collapsed → "Layers" button → checkbox group). */
+.layer-toggles {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0.4rem;
+  padding: 0.5rem 0.7rem;
+  min-width: 9rem;
+}
+
+.layer-toggles .layer-toggles-summary {
+  width: 100%;
+  text-align: left;
+  font-size: var(--fs-sm);
+  padding: 0.35rem 0.55rem;
+}
+
+.layer-toggles .layer-toggles-summary::before {
+  content: "▸ ";
+  opacity: 0.7;
+}
+
+.layer-toggles .layer-toggles-summary[aria-expanded="true"]::before {
+  content: "▾ ";
+  opacity: 0.9;
+}
+
+.layer-toggles .layer-toggles-group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  padding: 0.2rem 0.3rem 0.1rem;
+}
+
+.layer-toggles .layer-toggles-group[hidden] {
+  display: none;
+}
+
+.layer-toggles .layer-toggles-row {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: var(--fs-sm);
+  color: var(--fg);
+  cursor: pointer;
+}
+
+.layer-toggles .layer-toggles-checkbox {
+  min-width: 1rem;
+  min-height: 1rem;
+  accent-color: var(--accent);
+}
+
+.layer-toggles .layer-toggles-label {
+  flex: 1;
+}
+
+/* DOM overlay labels and hover/tap tooltip. The overlay element is
+   pointer-events: none (set in JS) so the canvas keeps all gestures. */
+.object-labels {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  overflow: hidden;
+  z-index: 5;
+}
+
+.object-labels .object-labels-layer {
+  position: absolute;
+  inset: 0;
+}
+
+.object-labels .object-labels-item {
+  position: absolute;
+  top: 0;
+  left: 0;
+  white-space: nowrap;
+  font-size: 0.8rem;
+  line-height: 1;
+  padding: 1px 4px;
+  border-radius: 3px;
+  color: var(--fg);
+  background: rgba(10, 14, 28, 0.55);
+  text-shadow: 0 0 2px rgba(0, 0, 0, 0.85);
+  font-variant-numeric: tabular-nums;
+  pointer-events: none;
+}
+
+.object-labels .object-labels-planet {
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.object-labels .object-labels-constellation {
+  color: rgba(200, 210, 240, 0.95);
+  font-style: italic;
+  background: rgba(10, 14, 28, 0.35);
+}
+
+.object-labels .object-labels-star {
+  color: rgba(245, 245, 255, 0.95);
+}
+
+.object-labels .object-labels-tooltip {
+  position: absolute;
+  top: 0;
+  left: 0;
+  white-space: nowrap;
+  font-size: var(--fs-sm);
+  line-height: 1.1;
+  padding: 3px 7px;
+  border-radius: 4px;
+  background: rgba(10, 14, 28, 0.92);
+  color: var(--fg);
+  border: 1px solid var(--ui-border);
+  box-shadow: 0 3px 10px rgba(0, 0, 0, 0.4);
+  pointer-events: none;
+  z-index: 6;
+}
+
+.object-labels .object-labels-tooltip[hidden] {
+  display: none;
+}

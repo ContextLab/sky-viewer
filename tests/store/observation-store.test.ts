@@ -50,6 +50,24 @@ describe('observation-store — coercion', () => {
     expect(s.getObservation().fovDeg).toBe(180);
   });
 
+  it('pitchDeg = -45 clamps to -30', () => {
+    const s = createStore();
+    s.setObservation({ pitchDeg: -45 });
+    expect(s.getObservation().pitchDeg).toBe(-30);
+  });
+
+  it('pitchDeg = 120 clamps to 90', () => {
+    const s = createStore();
+    s.setObservation({ pitchDeg: 120 });
+    expect(s.getObservation().pitchDeg).toBe(90);
+  });
+
+  it('pitchDeg = 15 stays 15 (within range)', () => {
+    const s = createStore();
+    s.setObservation({ pitchDeg: 15 });
+    expect(s.getObservation().pitchDeg).toBe(15);
+  });
+
   it('playback.rate = 999999 clamps to 86400', () => {
     const s = createStore();
     s.setObservation({ playback: { rate: 999999, paused: false } });
@@ -75,6 +93,12 @@ describe('observation-store — resetToDefault', () => {
       localDate: '2020-01-01',
       localTime: '08:30',
       utcOffsetMinutes: 0,
+      layers: {
+        constellationLines: false,
+        constellationLabels: false,
+        planetLabels: false,
+        brightStarLabels: true,
+      },
     });
     const out = s.resetToDefault();
     expect(out.schemaVersion).toBe(DEFAULT_OBSERVATION.schemaVersion);
@@ -87,9 +111,40 @@ describe('observation-store — resetToDefault', () => {
     expect(out.location.lon).toBe(DEFAULT_OBSERVATION.location.lon);
     expect(out.location.label).toBe(DEFAULT_OBSERVATION.location.label);
     expect(out.bearingDeg).toBe(DEFAULT_OBSERVATION.bearingDeg);
+    expect(out.pitchDeg).toBe(DEFAULT_OBSERVATION.pitchDeg);
     expect(out.fovDeg).toBe(DEFAULT_OBSERVATION.fovDeg);
     expect(out.playback.rate).toBe(DEFAULT_OBSERVATION.playback.rate);
     expect(out.playback.paused).toBe(DEFAULT_OBSERVATION.playback.paused);
+    expect(out.layers.constellationLines).toBe(
+      DEFAULT_OBSERVATION.layers.constellationLines
+    );
+    expect(out.layers.constellationLabels).toBe(
+      DEFAULT_OBSERVATION.layers.constellationLabels
+    );
+    expect(out.layers.planetLabels).toBe(DEFAULT_OBSERVATION.layers.planetLabels);
+    expect(out.layers.brightStarLabels).toBe(
+      DEFAULT_OBSERVATION.layers.brightStarLabels
+    );
+  });
+});
+
+describe('observation-store — layers', () => {
+  it('setObservation merges per-field against the current layers', () => {
+    const s = createStore();
+    // Default has brightStarLabels=false; flip just that one flag and leave
+    // everything else untouched.
+    s.setObservation({
+      layers: { brightStarLabels: true } as typeof DEFAULT_OBSERVATION.layers,
+    });
+    const out = s.getObservation();
+    expect(out.layers.brightStarLabels).toBe(true);
+    expect(out.layers.constellationLines).toBe(
+      DEFAULT_OBSERVATION.layers.constellationLines
+    );
+    expect(out.layers.constellationLabels).toBe(
+      DEFAULT_OBSERVATION.layers.constellationLabels
+    );
+    expect(out.layers.planetLabels).toBe(DEFAULT_OBSERVATION.layers.planetLabels);
   });
 });
 

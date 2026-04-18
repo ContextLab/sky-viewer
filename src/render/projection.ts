@@ -14,15 +14,22 @@
 //
 // The view is described by:
 //   bearingRad — direction the viewer is facing, radians, N=0, E=π/2.
+//   pitchRad   — vertical tilt of the view centre above the horizon,
+//                radians. 0 = horizon (legacy behaviour), +π/2 = zenith.
 //   fovRad     — horizontal field of view, radians (spec FR-005a: 30°–180°).
 //   aspect     — canvas width / canvas height.
 //
 // For a point at (altRad, azRad):
 //   1. dAz = azRad − bearingRad, wrapped to [−π, π].
 //   2. If altRad ≤ 0 AND |dAz| > π/2, the point is both below the
-//      horizon AND behind the viewer → cull.
-//   3. NDC x =  dAz   / (fovRad/2)    (positive right, left is −π … +π)
-//      NDC y = altRad / (fovRad/(2·aspect))
+//      horizon AND behind the viewer → cull. (Pitch does not affect
+//      culling — we still don't want to render points that are both
+//      below the horizon AND behind the observer regardless of tilt.)
+//   3. NDC x = dAz                   / (fovRad/2)   (positive right)
+//      NDC y = (altRad − pitchRad)   / (fovRad/(2·aspect))
+//      — subtracting pitchRad shifts the view so that looking up
+//        (positive pitch) brings higher-altitude points toward the
+//        screen centre.
 //
 // The y scaling uses the horizontal fov divided by aspect so circles
 // on the sky remain circular on screen (pixels are square). This is
@@ -69,6 +76,7 @@ export function projectAltAzToNdc(
   altRad: number,
   azRad: number,
   bearingRad: number,
+  pitchRad: number,
   fovRad: number,
   aspect: number,
 ): { x: number; y: number } | null {
@@ -78,8 +86,10 @@ export function projectAltAzToNdc(
   const halfFov = fovRad * 0.5;
   const x = dAz / halfFov;
   // y scaling preserves angular proportion for square pixels; see
-  // docstring at the top of the file.
-  const y = altRad / (halfFov / aspect);
+  // docstring at the top of the file. Subtract pitch so that looking
+  // up (positive pitchRad) shifts high-altitude points toward the
+  // view centre.
+  const y = (altRad - pitchRad) / (halfFov / aspect);
   return { x, y };
 }
 
@@ -110,10 +120,18 @@ export function projectAltAzDegToNdc(
   altDeg: number,
   azDeg: number,
   bearingRad: number,
+  pitchRad: number,
   fovRad: number,
   aspect: number,
 ): { x: number; y: number } | null {
-  return projectAltAzToNdc(altDeg * DEG2RAD, azDeg * DEG2RAD, bearingRad, fovRad, aspect);
+  return projectAltAzToNdc(
+    altDeg * DEG2RAD,
+    azDeg * DEG2RAD,
+    bearingRad,
+    pitchRad,
+    fovRad,
+    aspect,
+  );
 }
 
 /** Radius (CSS px) of a star of magnitude `vmag`. Matches GLSL size. */

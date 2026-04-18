@@ -4,8 +4,10 @@
 // clamps to ±86400. Re-derives utcInstant from the local triple on every
 // mutation that touches date/time/tz.
 import {
+  DEFAULT_LAYERS,
   DEFAULT_OBSERVATION,
   VERIFIED_DATE_RANGE,
+  type LayerVisibility,
   type Observation,
   type ObservationLocation,
   type PlaybackState,
@@ -52,6 +54,34 @@ function coercePlayback(
   return { rate, paused };
 }
 
+function coerceLayers(
+  next: Partial<LayerVisibility> | undefined,
+  prev: LayerVisibility | undefined
+): LayerVisibility {
+  // Merge per-field against the previous (or default) state. This means
+  // setObservation({ layers: { constellationLines: false } }) flips exactly
+  // one flag and leaves the rest untouched — matching how playback and
+  // location partial updates behave elsewhere in this file.
+  const base = prev ?? DEFAULT_LAYERS;
+  if (!next) return { ...base };
+  return {
+    constellationLines:
+      typeof next.constellationLines === "boolean"
+        ? next.constellationLines
+        : base.constellationLines,
+    constellationLabels:
+      typeof next.constellationLabels === "boolean"
+        ? next.constellationLabels
+        : base.constellationLabels,
+    planetLabels:
+      typeof next.planetLabels === "boolean" ? next.planetLabels : base.planetLabels,
+    brightStarLabels:
+      typeof next.brightStarLabels === "boolean"
+        ? next.brightStarLabels
+        : base.brightStarLabels,
+  };
+}
+
 // Compose local date+time+offset into a UTC instant.
 function computeUtcInstant(
   localDate: string,
@@ -88,9 +118,12 @@ function computeUtcInstant(
 function coerce(next: Partial<Observation>, prev: Observation): Observation {
   const bearingDeg =
     typeof next.bearingDeg === "number" ? wrap360(next.bearingDeg) : prev.bearingDeg;
+  const pitchDeg =
+    typeof next.pitchDeg === "number" ? clamp(next.pitchDeg, -30, 90) : prev.pitchDeg;
   const fovDeg = typeof next.fovDeg === "number" ? clamp(next.fovDeg, 30, 180) : prev.fovDeg;
   const location = coerceLocation(next.location, prev.location);
   const playback = coercePlayback(next.playback, prev.playback);
+  const layers = coerceLayers(next.layers, prev.layers);
   const localDate = typeof next.localDate === "string" ? next.localDate : prev.localDate;
   const localTime = typeof next.localTime === "string" ? next.localTime : prev.localTime;
   const timeZone = typeof next.timeZone === "string" ? next.timeZone : prev.timeZone;
@@ -118,8 +151,10 @@ function coerce(next: Partial<Observation>, prev: Observation): Observation {
     utcOffsetMinutes,
     location,
     bearingDeg,
+    pitchDeg,
     fovDeg,
     playback,
+    layers,
   };
 }
 
@@ -134,7 +169,12 @@ let singletonState: InternalState | null = null;
 function getState(): InternalState {
   if (!singletonState) {
     const loaded = loadPersisted();
-    singletonState = createState(loaded ?? DEFAULT_OBSERVATION);
+    // Backfill `layers` when reading a pre-layers persisted payload so the
+    // coerce path below never sees a missing sub-object.
+    const hydrated: Observation = loaded
+      ? { ...loaded, layers: loaded.layers ?? { ...DEFAULT_LAYERS } }
+      : DEFAULT_OBSERVATION;
+    singletonState = createState(hydrated);
   }
   return singletonState;
 }
@@ -189,7 +229,7 @@ export function createStore(initial: Observation = DEFAULT_OBSERVATION) {
       return () => s.listeners.delete(l);
     },
     resetToDefault: () => {
-      s.current = { ...DEFAULT_OBSERVATION };
+      s.current = { ...DEFAULT_OBSERVATION, layers: { ...DEFAULT_LAYERS } };
       notify(s);
       return s.current;
     },

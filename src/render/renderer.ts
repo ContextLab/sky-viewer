@@ -77,6 +77,7 @@ function createWebGL2Renderer(canvas: HTMLCanvasElement, gl: WebGL2RenderingCont
   function render(state: SkyState, datasets: SkyDatasets): void {
     const obs = state.observation;
     const bearingRad = obs.bearingDeg * DEG2RAD;
+    const pitchRad = obs.pitchDeg * DEG2RAD;
     const fovRad = obs.fovDeg * DEG2RAD;
     const aspect = cssWidth / cssHeight;
     const nowSec =
@@ -103,6 +104,7 @@ function createWebGL2Renderer(canvas: HTMLCanvasElement, gl: WebGL2RenderingCont
     const canvasPx: [number, number] = [canvas.width, canvas.height];
     const commonUniforms = {
       bearingRad,
+      pitchRad,
       fovRad,
       aspect,
       timeSec: nowSec / 1000,
@@ -113,6 +115,7 @@ function createWebGL2Renderer(canvas: HTMLCanvasElement, gl: WebGL2RenderingCont
     linePass.update(obs, datasets.constellations, datasets.stars, state.utcMs);
     linePass.draw({
       bearingRad,
+      pitchRad,
       fovRad,
       aspect,
       color: [0.7, 0.78, 0.95, 0.35],

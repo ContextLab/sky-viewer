@@ -28,13 +28,13 @@ float wrapSignedPi(float a) {
 // src/render/projection.ts::projectAltAzToNdc byte-for-byte.
 // Returns vec3(x, y, w) where w = 0 indicates a culled vertex
 // (below-horizon + behind-viewer), otherwise w = 1.
-vec3 projectAltAz(float altRad, float azRad, float bearingRad, float fovRad, float aspect) {
+vec3 projectAltAz(float altRad, float azRad, float bearingRad, float pitchRad, float fovRad, float aspect) {
   float dAz = wrapSignedPi(azRad - bearingRad);
   // Below horizon AND behind viewer → cull.
   float culled = step(0.0, -altRad) * step(1.5707963267948966, abs(dAz));
   float halfFov = fovRad * 0.5;
   float x = dAz / halfFov;
-  float y = altRad / (halfFov / aspect);
+  float y = (altRad - pitchRad) / (halfFov / aspect);
   // w = 1 − culled (so w=0 when culled, w=1 otherwise).
   return vec3(x, y, 1.0 - culled);
 }
@@ -59,6 +59,7 @@ in float iMag;
 in float iBvIndex;
 
 uniform float uBearingRad;
+uniform float uPitchRad;
 uniform float uFovRad;
 uniform float uAspect;
 uniform float uTime;
@@ -90,7 +91,7 @@ vec3 colorFromBv(float bv) {
 }
 
 void main() {
-  vec3 proj = projectAltAz(iAltAz.x, iAltAz.y, uBearingRad, uFovRad, uAspect);
+  vec3 proj = projectAltAz(iAltAz.x, iAltAz.y, uBearingRad, uPitchRad, uFovRad, uAspect);
 
   // Star point sprite size in pixels, magnitude-driven.
   float size = clamp(6.0 * pow(2.0, (4.5 - iMag) * 0.5), 1.0, 32.0);
@@ -145,11 +146,12 @@ ${PROJECTION_GLSL}
 in vec2 aAltAz;
 
 uniform float uBearingRad;
+uniform float uPitchRad;
 uniform float uFovRad;
 uniform float uAspect;
 
 void main() {
-  vec3 proj = projectAltAz(aAltAz.x, aAltAz.y, uBearingRad, uFovRad, uAspect);
+  vec3 proj = projectAltAz(aAltAz.x, aAltAz.y, uBearingRad, uPitchRad, uFovRad, uAspect);
   gl_Position = vec4(proj.xy * proj.z, 0.0, 1.0);
 }
 `;
@@ -183,6 +185,7 @@ in vec3 iTint;
 in float iSizePx;
 
 uniform float uBearingRad;
+uniform float uPitchRad;
 uniform float uFovRad;
 uniform float uAspect;
 uniform float uTime;
@@ -193,7 +196,7 @@ out vec3 vColor;
 out float vMagnitudeFalloff;
 
 void main() {
-  vec3 proj = projectAltAz(iAltAz.x, iAltAz.y, uBearingRad, uFovRad, uAspect);
+  vec3 proj = projectAltAz(iAltAz.x, iAltAz.y, uBearingRad, uPitchRad, uFovRad, uAspect);
 
   // Base size scales with magnitude like stars but with a larger floor
   // (planets are visible discs, not points). Sun/Moon override via
