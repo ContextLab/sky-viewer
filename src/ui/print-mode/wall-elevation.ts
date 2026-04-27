@@ -173,6 +173,154 @@ export function mountWallElevation(
   svgWrap.append(root);
   panel.append(svgWrap);
 
+  // ---- Numeric editor for the currently selected feature (Issue #4) ----
+  // When the user clicks a feature row in the wall-elevation list (or
+  // the rectangle in the SVG), we expose 4 numeric inputs:
+  //   - Sill height (mm above floor) = bottom edge = vMin
+  //   - Height (mm) = vMax - vMin
+  //   - Width (mm) = uMax - uMin
+  //   - Horizontal position (mm from wall left) = uMin
+  // Editing any of these patches the feature's outline. Non-rectangular
+  // outlines disable the editor with a tooltip.
+  const numericPanel = document.createElement("div");
+  numericPanel.className = "print-mode-feature-numeric";
+  numericPanel.hidden = true;
+  const numericTitle = document.createElement("h3");
+  numericTitle.className = "print-mode-feature-numeric-title";
+  numericTitle.textContent = "Edit selected feature";
+  numericPanel.append(numericTitle);
+  const numericGrid = document.createElement("div");
+  numericGrid.className = "print-mode-feature-numeric-grid";
+
+  function makeNumField(
+    labelText: string,
+    suffix: string,
+    aria: string,
+  ): { wrap: HTMLLabelElement; input: HTMLInputElement } {
+    const wrap = document.createElement("label");
+    wrap.className = "print-mode-field";
+    const span = document.createElement("span");
+    span.textContent = labelText;
+    const input = document.createElement("input");
+    input.type = "number";
+    input.className = "print-mode-input";
+    input.step = "10";
+    input.min = "0";
+    input.setAttribute("aria-label", aria);
+    const sfx = document.createElement("span");
+    sfx.className = "print-mode-suffix";
+    sfx.textContent = suffix;
+    wrap.append(span, input, sfx);
+    return { wrap, input };
+  }
+
+  const sillField = makeNumField("Sill height", "mm", "Sill height in millimetres above the floor");
+  const heightField = makeNumField("Height", "mm", "Feature height in millimetres");
+  const widthField = makeNumField("Width", "mm", "Feature width in millimetres");
+  const xField = makeNumField("Horizontal position", "mm", "Horizontal position in millimetres from the wall's left edge");
+  numericGrid.append(sillField.wrap, heightField.wrap, widthField.wrap, xField.wrap);
+  numericPanel.append(numericGrid);
+  const numericNote = document.createElement("p");
+  numericNote.className = "print-mode-helper";
+  panel.append(numericPanel);
+  numericPanel.append(numericNote);
+
+  let selectedFeatureId: string | null = null;
+
+  function getSelectedFeature(): RoomFeature | null {
+    if (!selectedFeatureId) return null;
+    const job = getPrintJob();
+    return job.room.features.find((f) => f.id === selectedFeatureId) ?? null;
+  }
+
+  /**
+   * If the outline is exactly 4 corners and forms an axis-aligned
+   * rectangle, return its bbox; otherwise null (numeric editor is then
+   * disabled with a tooltip explanation).
+   */
+  function rectBboxOf(
+    outline: ReadonlyArray<{ uMm: number; vMm: number }>,
+  ): { uMin: number; uMax: number; vMin: number; vMax: number } | null {
+    if (outline.length !== 4) return null;
+    const us = outline.map((p) => p.uMm).sort((a, b) => a - b);
+    const vs = outline.map((p) => p.vMm).sort((a, b) => a - b);
+    if (us[0] === undefined || us[3] === undefined || vs[0] === undefined || vs[3] === undefined) return null;
+    const uMin = us[0];
+    const uMax = us[3];
+    const vMin = vs[0];
+    const vMax = vs[3];
+    // Each point's u must be uMin or uMax, each v must be vMin or vMax.
+    let mins = 0;
+    let maxs = 0;
+    for (const p of outline) {
+      if (p.uMm !== uMin && p.uMm !== uMax) return null;
+      if (p.vMm !== vMin && p.vMm !== vMax) return null;
+      if (p.uMm === uMin) mins++;
+      if (p.uMm === uMax) maxs++;
+    }
+    // Two corners on each side ⇒ rectangle.
+    if (mins !== 2 || maxs !== 2) return null;
+    if (uMax <= uMin || vMax <= vMin) return null;
+    return { uMin, uMax, vMin, vMax };
+  }
+
+  function applyNumericEdit(): void {
+    const f = getSelectedFeature();
+    if (!f) return;
+    const sill = Number(sillField.input.value);
+    const heightMm = Number(heightField.input.value);
+    const widthMm = Number(widthField.input.value);
+    const xLeft = Number(xField.input.value);
+    if (![sill, heightMm, widthMm, xLeft].every((v) => Number.isFinite(v))) return;
+    const uMin = Math.max(0, Math.min(wallWidthMm - 50, xLeft));
+    const widthClamped = Math.max(50, Math.min(wallWidthMm - uMin, widthMm));
+    const uMax = uMin + widthClamped;
+    const vMin = Math.max(0, Math.min(wallHeightMm - 50, sill));
+    const heightClamped = Math.max(50, Math.min(wallHeightMm - vMin, heightMm));
+    const vMax = vMin + heightClamped;
+    const nextOutline = [
+      { uMm: uMin, vMm: vMin },
+      { uMm: uMax, vMm: vMin },
+      { uMm: uMax, vMm: vMax },
+      { uMm: uMin, vMm: vMax },
+    ];
+    updateFeature(f.id, { outline: nextOutline });
+  }
+  for (const fld of [sillField, heightField, widthField, xField]) {
+    fld.input.addEventListener("change", applyNumericEdit);
+  }
+
+  function refreshNumericPanel(): void {
+    const f = getSelectedFeature();
+    if (!f) {
+      numericPanel.hidden = true;
+      return;
+    }
+    numericPanel.hidden = false;
+    numericTitle.textContent = `Edit ${f.label}`;
+    const bbox = rectBboxOf(f.outline);
+    if (!bbox) {
+      // Non-rectangular outline — disable with explanation.
+      for (const fld of [sillField, heightField, widthField, xField]) {
+        fld.input.disabled = true;
+        fld.input.title = "Numeric editor only supports rectangular outlines.";
+      }
+      numericNote.textContent =
+        "This feature's outline is not a rectangle; use drag-edit only.";
+      return;
+    }
+    for (const fld of [sillField, heightField, widthField, xField]) {
+      fld.input.disabled = false;
+      fld.input.title = "";
+    }
+    sillField.input.value = String(Math.round(bbox.vMin));
+    heightField.input.value = String(Math.round(bbox.vMax - bbox.vMin));
+    widthField.input.value = String(Math.round(bbox.uMax - bbox.uMin));
+    xField.input.value = String(Math.round(bbox.uMin));
+    numericNote.textContent =
+      "Sill = bottom edge above floor. Width/height in mm. Drag the rectangle in the elevation to fine-tune.";
+  }
+
   // ---- List of features on this wall ----
   const list = document.createElement("ul");
   list.className = "print-mode-feature-list print-mode-wall-feature-list";
@@ -329,12 +477,21 @@ export function mountWallElevation(
   function renderFeatureRow(f: RoomFeature): HTMLLIElement {
     const li = document.createElement("li");
     li.className = "print-mode-feature-row";
+    if (selectedFeatureId === f.id) li.classList.add("print-mode-feature-row-selected");
     li.dataset.featureId = f.id;
+    // Selection toggle: explicit "Edit" / "Done" button so clicks on the
+    // label/paint/delete controls don't accidentally toggle selection.
+    function selectThis(): void {
+      selectedFeatureId = selectedFeatureId === f.id ? null : f.id;
+      render();
+    }
 
     const typeLabel = document.createElement("span");
     typeLabel.className = "print-mode-feature-type";
     typeLabel.textContent =
       f.type === "window" ? "Window" : f.type === "door" ? "Door" : "Closet";
+    typeLabel.style.cursor = "pointer";
+    typeLabel.addEventListener("click", selectThis);
     li.append(typeLabel);
 
     const labelInput = document.createElement("input");
@@ -360,6 +517,14 @@ export function mountWallElevation(
     paintSpan.title = "Off = no-paint (cut line). On = stars project onto it.";
     paintLabel.append(paintInput, paintSpan);
     li.append(paintLabel);
+
+    const editBtn = document.createElement("button");
+    editBtn.type = "button";
+    editBtn.className = "print-mode-secondary print-mode-feature-edit";
+    editBtn.textContent = selectedFeatureId === f.id ? "Done" : "Edit";
+    editBtn.setAttribute("aria-label", `Edit ${f.label}`);
+    editBtn.addEventListener("click", selectThis);
+    li.append(editBtn);
 
     const delBtn = document.createElement("button");
     delBtn.type = "button";
@@ -414,18 +579,26 @@ export function mountWallElevation(
       const heightPx = (vMax - vMin) * scale;
       const stroke = f.paint ? "rgba(120, 200, 120, 0.9)" : "rgba(245, 215, 110, 0.9)";
       const fill = f.paint ? "rgba(120, 200, 120, 0.18)" : "rgba(245, 215, 110, 0.18)";
-      featuresGroup.append(
-        svgEl("rect", {
-          x: tl.x,
-          y: tl.y,
-          width: widthPx,
-          height: heightPx,
-          fill,
-          stroke,
-          "stroke-width": 1.2,
-          "stroke-dasharray": f.paint ? "" : "4 2",
-        }),
-      );
+      const isSelected = selectedFeatureId === f.id;
+      const rectEl = svgEl("rect", {
+        x: tl.x,
+        y: tl.y,
+        width: widthPx,
+        height: heightPx,
+        fill,
+        stroke: isSelected ? "var(--accent)" : stroke,
+        "stroke-width": isSelected ? 2.4 : 1.2,
+        "stroke-dasharray": f.paint ? "" : "4 2",
+        class: "print-mode-wall-feature-rect",
+      }) as SVGRectElement;
+      rectEl.dataset.featureId = f.id;
+      rectEl.style.cursor = "pointer";
+      rectEl.addEventListener("click", (ev) => {
+        ev.stopPropagation();
+        selectedFeatureId = selectedFeatureId === f.id ? null : f.id;
+        render();
+      });
+      featuresGroup.append(rectEl);
       const labelEl = svgEl("text", {
         x: tl.x + widthPx / 2,
         y: tl.y + heightPx / 2,
@@ -449,6 +622,13 @@ export function mountWallElevation(
     } else {
       for (const f of wallFeatures) list.append(renderFeatureRow(f));
     }
+
+    // If the previously-selected feature is no longer on this wall (or
+    // was deleted), clear the selection.
+    if (selectedFeatureId && !wallFeatures.some((f) => f.id === selectedFeatureId)) {
+      selectedFeatureId = null;
+    }
+    refreshNumericPanel();
   }
 
   render();
