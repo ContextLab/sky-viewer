@@ -438,7 +438,7 @@ export function mount3dPreview(host: HTMLElement, register: RegisterRefresh): vo
   const helper = document.createElement("p");
   helper.className = "print-mode-helper";
   helper.textContent =
-    "View your room from the observer's eye. Drag to rotate; scroll to dolly forward/back. Each amber rectangle is one paper sheet you'll tape up.";
+    "View your room from the observer's eye. Drag to rotate; scroll to dolly forward/back. Each amber rectangle is one paper sheet you'll tape up. (Stars hide while you drag for smooth motion; release to see them again.)";
   panel.append(helper);
 
   // ---- Toolbar ----
@@ -489,6 +489,18 @@ export function mount3dPreview(host: HTMLElement, register: RegisterRefresh): vo
   let dragPointer: number | null = null;
   let lastDragX = 0;
   let lastDragY = 0;
+  // requestAnimationFrame coalescing — pointermove fires at 1 kHz on
+  // some trackpads; we cap to display refresh and drop quality
+  // (no holes, no labels) while a drag is active so each frame stays
+  // under a few hundred DOM nodes instead of ~1500.
+  let pendingRAF: number | null = null;
+  function scheduleRender(): void {
+    if (pendingRAF !== null) return;
+    pendingRAF = requestAnimationFrame(() => {
+      pendingRAF = null;
+      render();
+    });
+  }
 
   function setStatus(msg: string): void {
     status.textContent = msg;
@@ -562,7 +574,7 @@ export function mount3dPreview(host: HTMLElement, register: RegisterRefresh): vo
     const PITCH_LIMIT = Math.PI / 2 - 0.01;
     if (camera.pitch > PITCH_LIMIT) camera.pitch = PITCH_LIMIT;
     if (camera.pitch < -PITCH_LIMIT) camera.pitch = -PITCH_LIMIT;
-    render();
+    scheduleRender();
   });
   const endDrag = (ev: PointerEvent): void => {
     if (dragPointer !== ev.pointerId) return;
@@ -572,6 +584,8 @@ export function mount3dPreview(host: HTMLElement, register: RegisterRefresh): vo
     } catch {
       /* ignore */
     }
+    // Re-render at full quality (with holes + labels) on release.
+    render();
   };
   svg.addEventListener("pointerup", endDrag);
   svg.addEventListener("pointercancel", endDrag);
@@ -613,13 +627,18 @@ export function mount3dPreview(host: HTMLElement, register: RegisterRefresh): vo
       }
       camera.posX = Math.min(Math.max(camera.posX, xMin + 50), xMax - 50);
       camera.posY = Math.min(Math.max(camera.posY, yMin + 50), yMax - 50);
-      render();
+      scheduleRender();
     },
     { passive: false },
   );
 
   // ---- Render ----
   function render(): void {
+    // While the user is actively dragging we draw a "fast preview":
+    // wireframe + tile rectangles only. Holes (~1000 dots, depth-scaled
+    // radius) and per-tile labels are skipped because they dominate the
+    // per-frame cost. Full quality returns on pointerup.
+    const isDragging = dragPointer !== null;
     while (svg.firstChild) svg.removeChild(svg.firstChild);
 
     // Background fill.
@@ -716,7 +735,9 @@ export function mount3dPreview(host: HTMLElement, register: RegisterRefresh): vo
         ];
         projectAndDraw(tileGroup, corners3d, "rgba(240,192,64,0.85)", 1, true);
 
-        // Tile label at centre.
+        // Tile label at centre — skipped during drag (text nodes are
+        // cheap individually but we have ~150 of them per frame).
+        if (isDragging) continue;
         const cx = (b.uMinMm + b.uMaxMm) / 2;
         const cv = (b.vMinMm + b.vMaxMm) / 2;
         const centre = surfaceUVToWorld(surface, cx, cv);
@@ -743,7 +764,7 @@ export function mount3dPreview(host: HTMLElement, register: RegisterRefresh): vo
     holeGroup.setAttribute("class", "print-mode-preview-3d-holes");
     svg.append(holeGroup);
 
-    if (scene) {
+    if (scene && !isDragging) {
       const surfaceById = new Map<string, Surface>();
       for (const s of allSurfaces) surfaceById.set(s.id, s);
       // Use a small set to dedupe holes appearing in multiple tiles
