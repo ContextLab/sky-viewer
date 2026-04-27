@@ -54,10 +54,16 @@ describe("computePreflightSummary — canonical ceiling-only fixture", () => {
     expect(summary.surfaceCount).toBe(1);
   });
 
-  it("tilePageCount equals rows × cols of the ceiling grid (no skipping)", () => {
+  it("tilePageCount counts only non-blank tiles (≤ rows × cols)", () => {
+    // Per user feedback we now SKIP blank tiles. The exact count is a
+    // function of which (row, col) cells receive at least one hole or
+    // overlap a no-paint feature; we assert that it's strictly
+    // positive (the synthetic catalogue puts ≥1 star above horizon)
+    // and bounded above by the full grid size.
     const ceiling = deriveSurfaces(job.room).find((s) => s.id === "ceiling")!;
     const grid = computeTileGrid(ceiling, job.outputOptions.paper);
-    expect(summary.tilePageCount).toBe(grid.rows * grid.cols);
+    expect(summary.tilePageCount).toBeGreaterThan(0);
+    expect(summary.tilePageCount).toBeLessThanOrEqual(grid.rows * grid.cols);
   });
 
   it("totalPageCount = tilePageCount + 1 (cover)", () => {

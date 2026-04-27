@@ -293,6 +293,19 @@ export function buildPdf(
         const holes = holesByTile.get(key) ?? [];
         const featureCutouts = featuresByTile.get(key) ?? [];
         const constellationSegments = segmentsByTile.get(key) ?? [];
+        // Skip blank tiles — those that contain zero stars, zero
+        // feature cutouts, AND zero constellation-line segments.
+        // (FR-014 originally required emitting them; user feedback
+        // says page counts blow up — at 12 ft × 12 ft / Letter the
+        // ceiling alone is ~220 pages, with most blank near the
+        // horizon-far corners. Page numbers in the printed PDF stay
+        // contiguous because we increment pageNumber AFTER the skip
+        // decision; surface row/col labels still convey position.)
+        const isBlank =
+          holes.length === 0 &&
+          featureCutouts.length === 0 &&
+          constellationSegments.length === 0;
+        if (isBlank) continue;
         const tile: Tile = {
           surfaceId: surface.id,
           row: r,

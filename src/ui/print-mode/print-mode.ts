@@ -22,6 +22,7 @@ import { mountRoomEditor } from "./room-editor";
 import { mountFeaturePanel } from "./feature-panel";
 import { mountOutputOptions } from "./output-options";
 import { mountComputeButton } from "./compute-progress";
+import { mount3dPreview } from "./preview-3d";
 
 let stylesInjected = false;
 
@@ -113,6 +114,58 @@ export function mountPrintMode(triggerHost: HTMLElement): void {
     const colRoom = document.createElement("section");
     colRoom.className = "print-mode-col print-mode-col-room";
 
+    // Tab strip — switches between the floor-plan room editor and the
+    // 3D preview. The two views share the same column so the rest of
+    // the layout (observation editor + output options) stays put.
+    const tabStrip = document.createElement("div");
+    tabStrip.className = "print-mode-tab-strip";
+    tabStrip.setAttribute("role", "tablist");
+    tabStrip.setAttribute("aria-label", "Room view");
+
+    const tabEdit = document.createElement("button");
+    tabEdit.type = "button";
+    tabEdit.className = "print-mode-tab print-mode-tab-active";
+    tabEdit.setAttribute("role", "tab");
+    tabEdit.setAttribute("aria-selected", "true");
+    tabEdit.dataset.tab = "edit";
+    tabEdit.textContent = "Edit room";
+
+    const tabPreview = document.createElement("button");
+    tabPreview.type = "button";
+    tabPreview.className = "print-mode-tab";
+    tabPreview.setAttribute("role", "tab");
+    tabPreview.setAttribute("aria-selected", "false");
+    tabPreview.dataset.tab = "preview";
+    tabPreview.textContent = "3D preview";
+
+    tabStrip.append(tabEdit, tabPreview);
+    colRoom.append(tabStrip);
+
+    const tabPanelEdit = document.createElement("div");
+    tabPanelEdit.className = "print-mode-tab-panel print-mode-tab-panel-edit";
+    tabPanelEdit.setAttribute("role", "tabpanel");
+    tabPanelEdit.setAttribute("aria-label", "Edit room");
+
+    const tabPanelPreview = document.createElement("div");
+    tabPanelPreview.className = "print-mode-tab-panel print-mode-tab-panel-preview";
+    tabPanelPreview.setAttribute("role", "tabpanel");
+    tabPanelPreview.setAttribute("aria-label", "3D preview");
+    tabPanelPreview.hidden = true;
+
+    colRoom.append(tabPanelEdit, tabPanelPreview);
+
+    function activateTab(which: "edit" | "preview"): void {
+      const isEdit = which === "edit";
+      tabPanelEdit.hidden = !isEdit;
+      tabPanelPreview.hidden = isEdit;
+      tabEdit.classList.toggle("print-mode-tab-active", isEdit);
+      tabPreview.classList.toggle("print-mode-tab-active", !isEdit);
+      tabEdit.setAttribute("aria-selected", isEdit ? "true" : "false");
+      tabPreview.setAttribute("aria-selected", isEdit ? "false" : "true");
+    }
+    tabEdit.addEventListener("click", () => activateTab("edit"));
+    tabPreview.addEventListener("click", () => activateTab("preview"));
+
     const colOutput = document.createElement("section");
     colOutput.className = "print-mode-col print-mode-col-output";
 
@@ -128,9 +181,12 @@ export function mountPrintMode(triggerHost: HTMLElement): void {
     mountObservationEditor(colObservation, register);
 
     // Room editor: SVG floor-plan + ceiling/eye height + observer position.
-    mountRoomEditor(colRoom, register);
+    mountRoomEditor(tabPanelEdit, register);
     // Feature panel: light fixture placement + paint/no-paint toggles.
-    mountFeaturePanel(colRoom, register);
+    mountFeaturePanel(tabPanelEdit, register);
+
+    // 3D preview — sits in the alternate tab on the same column.
+    mount3dPreview(tabPanelPreview, register);
 
     // Output options + Compute button.
     mountOutputOptions(colOutput, register);

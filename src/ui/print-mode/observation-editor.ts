@@ -17,6 +17,7 @@
 
 import { getPrintJob, setPrintJob } from "../../print/print-job-store";
 import type { RegisterRefresh } from "./print-mode";
+import { openPrintModeLocationPicker } from "./print-mode-map-picker";
 
 const SVG_NS = "http://www.w3.org/2000/svg";
 
@@ -122,13 +123,35 @@ export function mountObservationEditor(host: HTMLElement, register: RegisterRefr
   locReadout.className = "print-mode-readout print-mode-location-readout";
   const locActions = document.createElement("div");
   locActions.className = "print-mode-row";
+  const searchBtn = document.createElement("button");
+  searchBtn.type = "button";
+  searchBtn.className = "print-mode-secondary";
+  searchBtn.textContent = "Search location…";
+  searchBtn.title = "Open the city/map picker";
   const changeBtn = document.createElement("button");
   changeBtn.type = "button";
   changeBtn.className = "print-mode-secondary";
-  changeBtn.textContent = "Change…";
-  locActions.append(changeBtn);
+  changeBtn.textContent = "Type lat/lon…";
+  locActions.append(searchBtn, changeBtn);
   locField.append(locHeading, locReadout, locActions);
   panel.append(locField);
+
+  searchBtn.addEventListener("click", () => {
+    openPrintModeLocationPicker((pick) => {
+      const job = getPrintJob();
+      const next: typeof job.observation = {
+        ...job.observation,
+        location: { lat: pick.lat, lon: pick.lon, label: pick.label ?? null },
+      };
+      if (typeof pick.timeZone === "string") {
+        next.timeZone = pick.timeZone;
+      }
+      if (typeof pick.utcOffsetMinutes === "number") {
+        next.utcOffsetMinutes = pick.utcOffsetMinutes;
+      }
+      setPrintJob({ observation: next });
+    });
+  });
 
   changeBtn.addEventListener("click", () => {
     const job = getPrintJob();

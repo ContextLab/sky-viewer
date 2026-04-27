@@ -23,9 +23,22 @@
 // store change via the registered refresh callback.
 
 import { getPrintJob, setPrintJob } from "../../print/print-job-store";
+import { deriveSurfaces } from "../../print/projection";
 import { mountWallElevation } from "./wall-elevation";
 import type { RegisterRefresh } from "./print-mode";
 import type { RoomFeature } from "../../print/types";
+
+type PendingFeatureType = "window" | "door" | "closet";
+
+// Default sizes per FR-005 / common construction sizes (Issue #2).
+const PENDING_FEATURE_DEFAULTS: Record<
+  PendingFeatureType,
+  { widthMm: number; heightMm: number; sillMm: number }
+> = {
+  window: { widthMm: 600, heightMm: 900, sillMm: 900 },
+  door: { widthMm: 900, heightMm: 2030, sillMm: 0 },
+  closet: { widthMm: 1200, heightMm: 2030, sillMm: 0 },
+};
 
 const SVG_NS = "http://www.w3.org/2000/svg";
 const MM_PER_FT = 304.8;
@@ -233,7 +246,7 @@ export function mountRoomEditor(host: HTMLElement, register: RegisterRefresh): v
   const hint = document.createElement("p");
   hint.className = "print-mode-helper";
   hint.textContent =
-    "Drag vertices to resize. Double-click a segment to add a vertex; right-click a vertex to remove it. Drag the dot to move the observer.";
+    "Drag vertices to resize (Shift snaps to 90 deg, Cmd/Ctrl-click to multi-select). Double-click a segment to add a vertex; right-click a vertex to remove it. Click a wall to edit its elevation. Drag the dot to move the observer.";
   panel.append(svgWrap, hint);
 
   // Wall-elevation host - populated when a wall segment is clicked.
@@ -248,6 +261,78 @@ export function mountRoomEditor(host: HTMLElement, register: RegisterRefresh): v
       elevationUnsub = null;
     }
     elevationUnsub = mountWallElevation(elevationHost, wallId);
+  }
+
+  // Issue #2 — Listen for the feature-panel's "Add window/door/closet"
+  // arming events so we know to drop a default-sized feature on the
+  // next wall click instead of just opening the elevation panel.
+  let pendingFeatureType: PendingFeatureType | null = null;
+  const onPending = (ev: Event): void => {
+    const ce = ev as CustomEvent<{ type: PendingFeatureType | null }>;
+    pendingFeatureType = ce.detail.type;
+  };
+  document.addEventListener("print-mode:pending-feature", onPending);
+
+  /**
+   * Place a default-sized feature of `type` centred on `wallId`. Enables
+   * the wall (so the projection includes it). Returns the new feature id.
+   */
+  function placePendingFeatureOnWall(
+    type: PendingFeatureType,
+    wallId: string,
+  ): string | null {
+    const job = getPrintJob();
+    const surfaces = deriveSurfaces(job.room, job.outputOptions.blockHorizonOnWalls);
+    const wall = surfaces.find((s) => s.id === wallId && s.kind === "wall");
+    if (!wall) return null;
+    const def = PENDING_FEATURE_DEFAULTS[type];
+    // Clamp to the wall's actual extents.
+    const widthMm = Math.min(def.widthMm, Math.max(50, wall.widthMm - 50));
+    const heightMm = Math.min(def.heightMm, Math.max(50, wall.heightMm - 50));
+    const sillMm = Math.min(def.sillMm, Math.max(0, wall.heightMm - heightMm));
+    const uMin = Math.max(0, (wall.widthMm - widthMm) / 2);
+    const uMax = uMin + widthMm;
+    const vMin = sillMm;
+    const vMax = sillMm + heightMm;
+    const labelBase = type === "window" ? "Window" : type === "door" ? "Door" : "Closet";
+    const re = new RegExp("^" + labelBase + "\\s+(\\d+)\\s*$");
+    let max = 0;
+    for (const f of job.room.features) {
+      if (f.type !== type) continue;
+      const m = f.label.match(re);
+      if (m && m[1]) {
+        const n = Number(m[1]);
+        if (Number.isFinite(n) && n > max) max = n;
+      }
+    }
+    const id = `feat-${Date.now().toString(36)}-${Math.floor(Math.random() * 0xfffff).toString(36)}`;
+    const newFeature: RoomFeature = {
+      id,
+      type,
+      label: labelBase + " " + (max + 1),
+      surfaceId: wallId,
+      outline: [
+        { uMm: uMin, vMm: vMin },
+        { uMm: uMax, vMm: vMin },
+        { uMm: uMax, vMm: vMax },
+        { uMm: uMin, vMm: vMax },
+      ],
+      paint: false,
+    };
+    // Also enable the wall so the user immediately sees it accounted for.
+    const wallsEnabled = { ...(job.room.surfaceEnable.walls ?? {}) };
+    wallsEnabled[wallId] = true;
+    setPrintJob({
+      room: {
+        features: [...job.room.features, newFeature],
+        surfaceEnable: {
+          ceiling: job.room.surfaceEnable.ceiling,
+          floor: job.room.surfaceEnable.floor,
+          walls: wallsEnabled,
+        },
+      },
+    });
+    return id;
   }
 
   host.append(panel);
@@ -341,12 +426,25 @@ export function mountRoomEditor(host: HTMLElement, register: RegisterRefresh): v
   let longPressTimer: ReturnType<typeof setTimeout> | null = null;
   let longPressIndex = -1;
   let selectedFeatureId: string | null = null;
+  // Issue #6 — multi-vertex selection. A plain click on a vertex resets
+  // the set to {idx}. Cmd/Ctrl-click toggles {idx} in the set without
+  // clearing other entries.
+  const selectedVertices = new Set<number>();
 
   function deleteVertex(index: number): void {
     const job = getPrintJob();
     if (job.room.vertices.length <= 4) return;
     const next = job.room.vertices.slice();
     next.splice(index, 1);
+    // Issue #6 — keep the multi-select set in sync after a removal:
+    // every index past `index` shifts down by 1.
+    const reindexed = new Set<number>();
+    for (const i of selectedVertices) {
+      if (i === index) continue;
+      reindexed.add(i > index ? i - 1 : i);
+    }
+    selectedVertices.clear();
+    for (const i of reindexed) selectedVertices.add(i);
     setPrintJob({ room: { vertices: next } });
   }
 
@@ -657,7 +755,18 @@ export function mountRoomEditor(host: HTMLElement, register: RegisterRefresh): v
       });
       seg.addEventListener("click", (ev) => {
         ev.preventDefault();
-        openWallElevation(`wall-${i}`);
+        const wallId = `wall-${i}`;
+        if (pendingFeatureType !== null) {
+          const placed = placePendingFeatureOnWall(pendingFeatureType, wallId);
+          // Tell the feature-panel to clear its armed state + button highlight.
+          document.dispatchEvent(
+            new CustomEvent("print-mode:feature-placed", {
+              detail: { type: pendingFeatureType, wallId, featureId: placed },
+            }),
+          );
+          pendingFeatureType = null;
+        }
+        openWallElevation(wallId);
       });
       segmentsGroup.append(seg);
 
@@ -752,16 +861,20 @@ export function mountRoomEditor(host: HTMLElement, register: RegisterRefresh): v
       hitArea.dataset.vertexIndex = String(i);
       vertexGroup.append(hitArea);
 
+      // Issue #6 — visually flag selected vertices with a brighter ring.
+      const isSel = selectedVertices.has(i);
       const handle = svgEl("circle", {
         cx: p.x,
         cy: p.y,
-        r: 6,
-        fill: "var(--accent)",
-        stroke: "#111",
-        "stroke-width": 1.5,
-        class: "print-mode-vertex-handle",
+        r: isSel ? 8 : 6,
+        fill: isSel ? "#fff" : "var(--accent)",
+        stroke: isSel ? "var(--accent)" : "#111",
+        "stroke-width": isSel ? 2.5 : 1.5,
+        class: isSel
+          ? "print-mode-vertex-handle print-mode-vertex-handle-selected"
+          : "print-mode-vertex-handle",
         role: "button",
-        "aria-label": `Vertex ${i + 1} of ${verts.length}`,
+        "aria-label": `Vertex ${i + 1} of ${verts.length}${isSel ? " (selected)" : ""}`,
         tabindex: 0,
       }) as SVGCircleElement;
       handle.style.cursor = "grab";
@@ -771,9 +884,19 @@ export function mountRoomEditor(host: HTMLElement, register: RegisterRefresh): v
       hitArea.style.cursor = "grab";
       hitArea.addEventListener("pointerdown", (ev) => {
         if (activePointer !== null) return;
+        // Issue #6 — Cmd/Ctrl-click toggles `i` in the multi-select set.
+        // Plain click resets selection to {i}.
+        if (ev.metaKey || ev.ctrlKey) {
+          if (selectedVertices.has(i)) selectedVertices.delete(i);
+          else selectedVertices.add(i);
+        } else if (!selectedVertices.has(i)) {
+          selectedVertices.clear();
+          selectedVertices.add(i);
+        }
         activePointer = ev.pointerId;
         drag = { kind: "vertex", index: i };
         hitArea.setPointerCapture(ev.pointerId);
+        render();
         ev.preventDefault();
       });
       hitArea.addEventListener("contextmenu", (ev) => {
@@ -783,9 +906,18 @@ export function mountRoomEditor(host: HTMLElement, register: RegisterRefresh): v
 
       handle.addEventListener("pointerdown", (ev) => {
         if (activePointer !== null) return;
+        // Issue #6 — Cmd/Ctrl-click multi-select.
+        if (ev.metaKey || ev.ctrlKey) {
+          if (selectedVertices.has(i)) selectedVertices.delete(i);
+          else selectedVertices.add(i);
+        } else if (!selectedVertices.has(i)) {
+          selectedVertices.clear();
+          selectedVertices.add(i);
+        }
         activePointer = ev.pointerId;
         drag = { kind: "vertex", index: i };
         handle.setPointerCapture(ev.pointerId);
+        render();
         ev.preventDefault();
         // Long-press to delete on touch devices.
         if (ev.pointerType === "touch") {
@@ -833,7 +965,38 @@ export function mountRoomEditor(host: HTMLElement, register: RegisterRefresh): v
       const next = job.room.vertices.slice();
       const idx = drag.index;
       if (idx >= 0 && idx < next.length) {
-        next[idx] = { xMm: mm.xMm, yMm: mm.yMm };
+        let targetX = mm.xMm;
+        let targetY = mm.yMm;
+        // Issue #5 — Shift-drag: project the pointer onto the nearest
+        // cardinal axis from the previous neighbour (so the new segment
+        // is purely horizontal or purely vertical).
+        if (ev.shiftKey) {
+          const prevIdx = (idx - 1 + next.length) % next.length;
+          const prev = next[prevIdx];
+          if (prev) {
+            const dx = mm.xMm - prev.xMm;
+            const dy = mm.yMm - prev.yMm;
+            if (Math.abs(dx) >= Math.abs(dy)) {
+              targetY = prev.yMm; // horizontal segment
+            } else {
+              targetX = prev.xMm; // vertical segment
+            }
+          }
+        }
+        // Issue #6 — multi-vertex drag: if the dragged vertex is in the
+        // selectedVertices set, translate ALL selected vertices by the
+        // same delta. Otherwise just move this one.
+        const dxMm = targetX - next[idx]!.xMm;
+        const dyMm = targetY - next[idx]!.yMm;
+        if (selectedVertices.has(idx) && selectedVertices.size > 1) {
+          for (const i of selectedVertices) {
+            const v = next[i];
+            if (!v) continue;
+            next[i] = { xMm: v.xMm + dxMm, yMm: v.yMm + dyMm };
+          }
+        } else {
+          next[idx] = { xMm: targetX, yMm: targetY };
+        }
         setPrintJob({ room: { vertices: next } });
       }
     } else if (drag.kind === "observer") {
