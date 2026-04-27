@@ -22,6 +22,12 @@ const sharedOptions = {
   sourcemap: SERVE,
   target: ["es2020"],
   format: "esm",
+  // Code splitting: dynamic `import()` calls produce separate chunks loaded
+  // on demand (e.g. jspdf inside src/print/* lazy-loads only when Print
+  // Mode's Compute runs). Keeps the initial app payload under the
+  // 200 KB-gzipped constitution budget.
+  splitting: true,
+  chunkNames: "chunks/[name]-[hash]",
   outdir: OUT,
   metafile: true,
   loader: { ".glsl": "text" },

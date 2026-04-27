@@ -848,3 +848,448 @@ body.red-light-active {
   /* Subtle tint behind the veil in case blend-mode isn't supported. */
   background: #100000;
 }
+
+/* ----------------------------------------------------------------------
+   Print Mode — full-screen overlay for the star-stencil PDF generator.
+   See src/ui/print-mode/print-mode.ts. All selectors prefixed with
+   .print-mode- so the rules don't leak into the main view.
+   ---------------------------------------------------------------------- */
+
+.print-mode-trigger {
+  white-space: nowrap;
+  font-weight: 500;
+  letter-spacing: 0.01em;
+  min-height: 32px;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-1);
+}
+
+.print-mode-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(3, 5, 12, 0.75);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+  z-index: 50;
+  display: flex;
+  align-items: stretch;
+  justify-content: stretch;
+  pointer-events: auto;
+}
+
+.print-mode-overlay {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  background: var(--ui-bg);
+  color: var(--fg);
+  overflow-y: auto;
+  pointer-events: auto;
+  /* Slight inner border so the panel reads as a card on tall screens. */
+  border-left: 1px solid var(--ui-border);
+}
+
+.print-mode-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-3);
+  padding: var(--sp-3) var(--sp-4);
+  border-bottom: 1px solid var(--ui-border);
+  background: rgba(8, 12, 24, 0.92);
+  position: sticky;
+  top: 0;
+  z-index: 1;
+}
+
+.print-mode-title {
+  margin: 0;
+  font-size: var(--fs-lg);
+  font-weight: 500;
+  letter-spacing: 0.02em;
+}
+
+.print-mode-close {
+  min-height: 36px;
+  font-weight: 500;
+}
+
+.print-mode-body {
+  display: grid;
+  grid-template-columns: minmax(220px, 1fr) minmax(320px, 1.4fr) minmax(220px, 1fr);
+  gap: var(--sp-4);
+  padding: var(--sp-4);
+  align-items: start;
+}
+
+.print-mode-col {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+}
+
+.print-mode-panel {
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--ui-border);
+  border-radius: var(--panel-radius);
+  padding: var(--sp-3);
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+}
+
+.print-mode-panel-heading {
+  margin: 0;
+  font-size: var(--fs-md);
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--fg-muted);
+}
+
+.print-mode-helper {
+  margin: 0;
+  font-size: var(--fs-xs);
+  color: var(--fg-muted);
+  line-height: 1.4;
+}
+
+.print-mode-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-2);
+}
+
+.print-mode-field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-1);
+  font-size: var(--fs-xs);
+  color: var(--fg-muted);
+  letter-spacing: var(--ls-label);
+  text-transform: uppercase;
+  font-weight: 500;
+}
+
+.print-mode-field > span:first-child,
+.print-mode-field legend {
+  font-size: var(--fs-xs);
+  color: var(--fg-muted);
+  letter-spacing: var(--ls-label);
+  text-transform: uppercase;
+  font-weight: 500;
+  padding: 0;
+}
+
+.print-mode-input {
+  background: var(--input-bg);
+  color: var(--fg);
+  border: 1px solid var(--ui-border);
+  border-radius: 6px;
+  padding: var(--sp-1) var(--sp-2);
+  font-size: var(--fs-md);
+  min-height: 32px;
+  text-transform: none;
+  letter-spacing: 0;
+}
+
+.print-mode-input:hover,
+.print-mode-input:focus {
+  border-color: var(--ui-border-hover);
+  background: var(--input-bg-hover);
+}
+
+.print-mode-readout {
+  font-family: var(--font-mono);
+  font-size: var(--fs-sm);
+  color: var(--fg);
+  letter-spacing: var(--ls-readout);
+  white-space: pre-line;
+  text-transform: none;
+}
+
+.print-mode-readout-inline {
+  font-family: var(--font-mono);
+  font-size: var(--fs-xs);
+  color: var(--fg-muted);
+  letter-spacing: var(--ls-readout);
+  text-transform: none;
+}
+
+.print-mode-suffix {
+  font-size: var(--fs-sm);
+  color: var(--fg-muted);
+}
+
+.print-mode-secondary {
+  background: var(--input-bg);
+  border: 1px solid var(--ui-border);
+  color: var(--fg);
+  border-radius: 6px;
+  padding: var(--sp-1) var(--sp-3);
+  font-size: var(--fs-md);
+  font-weight: 500;
+  min-height: 32px;
+  cursor: pointer;
+}
+
+.print-mode-secondary:hover {
+  background: var(--input-bg-hover);
+  border-color: var(--ui-border-hover);
+}
+
+.print-mode-primary {
+  background: rgba(245, 215, 110, 0.22);
+  border: 1px solid var(--accent);
+  color: var(--fg);
+  border-radius: 6px;
+  padding: var(--sp-2) var(--sp-4);
+  font-size: var(--fs-md);
+  font-weight: 600;
+  min-height: 40px;
+  cursor: pointer;
+  letter-spacing: 0.02em;
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.print-mode-primary:hover {
+  background: rgba(245, 215, 110, 0.35);
+}
+
+.print-mode-primary[disabled],
+.print-mode-secondary[disabled] {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.print-mode-svg-wrap {
+  border: 1px solid var(--ui-border);
+  border-radius: 6px;
+  background: rgba(0, 0, 0, 0.30);
+  padding: var(--sp-2);
+}
+
+.print-mode-svg {
+  display: block;
+  margin: 0 auto;
+  max-width: 100%;
+  height: auto;
+  touch-action: none;
+}
+
+.print-mode-direction-row {
+  align-items: center;
+  gap: var(--sp-2);
+}
+
+.print-mode-direction-input {
+  width: 6rem;
+}
+
+.print-mode-rose {
+  display: block;
+}
+
+.print-mode-status {
+  margin: 0;
+  font-size: var(--fs-sm);
+  color: var(--fg-muted);
+  min-height: 1.4em;
+  font-family: var(--font-mono);
+}
+
+.print-mode-status-error {
+  color: var(--danger);
+}
+
+.print-mode-feature-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-1);
+}
+
+.print-mode-feature-row {
+  display: grid;
+  grid-template-columns: minmax(80px, auto) minmax(120px, 1fr) auto auto;
+  gap: var(--sp-2);
+  align-items: center;
+  padding: var(--sp-1);
+  border: 1px solid var(--ui-border);
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.print-mode-feature-empty {
+  font-size: var(--fs-xs);
+  color: var(--fg-muted);
+  font-style: italic;
+}
+
+.print-mode-feature-type {
+  font-size: var(--fs-sm);
+  font-weight: 600;
+  color: var(--fg);
+}
+
+.print-mode-feature-paint {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-1);
+  font-size: var(--fs-xs);
+  color: var(--fg-muted);
+  text-transform: uppercase;
+  letter-spacing: var(--ls-label);
+}
+
+.print-mode-feature-paint input {
+  accent-color: var(--accent);
+}
+
+.print-mode-feature-delete {
+  font-size: var(--fs-xs);
+  padding: var(--sp-1) var(--sp-2);
+  min-height: 28px;
+}
+
+.print-mode-checkbox-row {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  font-size: var(--fs-sm);
+  color: var(--fg);
+  text-transform: none;
+  letter-spacing: 0;
+  font-weight: 400;
+  padding: var(--sp-1) 0;
+}
+
+.print-mode-checkbox-row input {
+  accent-color: var(--accent);
+}
+
+.print-mode-disabled {
+  opacity: 0.5;
+}
+
+.print-mode-surfaces,
+.print-mode-advanced {
+  border: 1px solid var(--ui-border);
+  border-radius: 6px;
+  padding: var(--sp-2) var(--sp-3);
+  margin: 0;
+}
+
+.print-mode-surfaces legend,
+.print-mode-advanced legend {
+  padding: 0 var(--sp-1);
+}
+
+.print-mode-paper-dim {
+  width: 5rem;
+}
+
+.print-mode-custom-row {
+  align-items: center;
+  gap: var(--sp-2);
+}
+
+.print-mode-units-row {
+  gap: var(--sp-3);
+}
+
+.print-mode-units-row label {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-1);
+  text-transform: none;
+  letter-spacing: 0;
+  font-weight: 400;
+  font-size: var(--fs-sm);
+  color: var(--fg);
+}
+
+.print-mode-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(3, 5, 12, 0.7);
+  z-index: 60;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--sp-4);
+}
+
+.print-mode-modal {
+  background: var(--ui-bg);
+  border: 1px solid var(--ui-border);
+  border-radius: var(--panel-radius);
+  padding: var(--sp-4);
+  max-width: 32rem;
+  width: 100%;
+  box-shadow: var(--panel-shadow);
+}
+
+.print-mode-modal-title {
+  margin: 0 0 var(--sp-2);
+  font-size: var(--fs-lg);
+}
+
+.print-mode-modal-list {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: var(--sp-1) var(--sp-3);
+  margin: 0 0 var(--sp-4);
+  font-size: var(--fs-sm);
+}
+
+.print-mode-modal-list dt {
+  color: var(--fg-muted);
+}
+
+.print-mode-modal-list dd {
+  margin: 0;
+  font-family: var(--font-mono);
+  color: var(--fg);
+  text-align: right;
+}
+
+.print-mode-modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--sp-2);
+}
+
+.print-mode-vertex-handle {
+  cursor: grab;
+}
+
+.print-mode-vertex-handle:active {
+  cursor: grabbing;
+}
+
+.print-mode-segment-hit {
+  cursor: copy;
+}
+
+@media (max-width: 800px) {
+  .print-mode-body {
+    grid-template-columns: 1fr;
+  }
+
+  /* Mobile tap-target hardening per FR-020 / SC-010. */
+  .print-mode-input,
+  .print-mode-secondary,
+  .print-mode-primary,
+  .print-mode-close {
+    min-height: 44px;
+  }
+}
+
