@@ -57,3 +57,16 @@ Scripts in [.specify/scripts/bash/](.specify/scripts/bash/) (notably `common.sh:
 - **Animation semantics** (Q3): time auto-advances at default 60× real-time; user can pause, reverse, scrub, or change rate.
 - **FOV** (Q4): default 90°, user-zoomable 30°–180° via pinch / scroll / `+`-`-`.
 - **A11y summary** (Q5): screen-reader-only observation line (location/date/time/UTC/facing/FOV) only — no per-object narration in MVP.
+
+## Active feature (002-stencil-template-pdf)
+
+Print Mode: generates a tileable, paper-and-tape spray-paint stencil PDF of the night sky for a user-drawn room. Status: spec + plan + research + data-model + contracts + quickstart written; no source code yet.
+
+- **New module roots**: [src/print/](src/print/) (pure TS — projection geometry, tile grid, PDF builder; no DOM) and [src/ui/print-mode/](src/ui/print-mode/) (DOM — overlay + room editor + output options). Mirrors the parent feature's `app/` vs `ui/` split so geometry and PDF assembly are headlessly testable.
+- **Surfaces** (FR-007): per-surface enable map covering ceiling, every wall, and floor. Floor projects the **antipodal sky** (alt → −alt) — "see through Earth". Walls projection mode toggles via `outputOptions.blockHorizonOnWalls` (FR-008a): ON = above-horizon only; OFF = floor-to-ceiling continuous.
+- **Room features** (FR-005): each window/door/closet/light has a per-feature **paint / no-paint** toggle. No-paint features render as **dotted cut lines** on overlapping tile pages — the cut shape doubles as a real-world registration anchor.
+- **Hole sizing** (FR-011, R4): four classes — pencil (mag ≤ 0, 6 mm), large nail (≤ 1, 4 mm), small nail (≤ 3, 2.5 mm), pin (≤ 6, 1 mm). Cover page legend printed at exact diameter for physical tool calibration.
+- **Blank tiles are first-class** (FR-014): every grid cell on every enabled surface emits a numbered page even if it has zero holes — preserves the registration grid for assembly.
+- **Paper sizes** (FR-018): Letter / Legal / Tabloid / A3 / A4 / A5 presets plus custom W × H within [100×150, 600×900] mm. One paper size per job.
+- **PDF library**: `jspdf` ^2.5 (~60 KB gz, MIT, client-side only) — the only new runtime dep. Test-only dev dep: `pdf-parse`. R13 reconciles cumulative payload at ~180 KB code, well under the 200 KB budget.
+- **Persistence**: separate `skyViewer.printJob` localStorage key — independent from the main observation so the print job survives main-view edits.

@@ -4,7 +4,9 @@
   "description": "Single-page, offline-capable star visualizer. Pick date + location + direction, see the sky. No backend, no API keys.",
   "type": "module",
   "license": "MIT",
-  "engines": { "node": ">=20" },
+  "engines": {
+    "node": ">=20"
+  },
   "scripts": {
     "dev": "node esbuild.config.mjs --serve",
     "build": "node esbuild.config.mjs && node tools/inline-html.mjs && npm run check:payload",
@@ -23,8 +25,12 @@
     "astronomy-engine": "^2.1.19",
     "esbuild": "^0.21.0",
     "jsdom": "^24.0.0",
+    "pdf-parse": "^1.1.4",
     "tsx": "^4.7.0",
     "typescript": "^5.4.0",
     "vitest": "^1.6.0"
+  },
+  "dependencies": {
+    "jspdf": "^2.5.2"
   }
 }
