@@ -18,12 +18,18 @@ export interface Vec3 {
 /** Hole-size encoding per FR-011 / R4 (cover-page legend = calibration). */
 export type SizeClass = "pencil" | "largeNail" | "smallNail" | "pin";
 
-/** Printed diameter (mm) per size class. */
+/**
+ * Printed diameter (mm) per size class. Doubled from the original
+ * R4 spec values per user feedback: at the original 6/4/2.5/1 mm
+ * sizes the printed holes were too small to read at typical room
+ * scale (8 ft ceiling, 12 ft room → eye-to-ceiling distance feels
+ * like a pinhole-projector). 12/8/5/2 mm reads as actual stars.
+ */
 export const HOLE_DIAMETERS_MM: Record<SizeClass, number> = {
-  pencil: 6,
-  largeNail: 4,
-  smallNail: 2.5,
-  pin: 1,
+  pencil: 12,
+  largeNail: 8,
+  smallNail: 5,
+  pin: 2,
 };
 
 /**

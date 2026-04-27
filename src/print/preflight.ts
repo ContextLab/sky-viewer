@@ -27,7 +27,7 @@ import {
   deriveSurfaces,
   projectBodyOntoSurface,
 } from "./projection";
-import { computeTileGrid } from "./tile-grid";
+import { assignHolesToTiles, computeTileGrid } from "./tile-grid";
 import {
   classifyMagnitude,
   type Hole,
@@ -126,8 +126,10 @@ export function computePreflightSummary(
     });
   }
 
-  // Tile-page counter: every enabled surface contributes rows × cols
-  // pages, even blank ones (FR-014, SC-013).
+  // Tile-page counter: count only NON-BLANK tiles. A tile is non-blank
+  // if it contains at least one hole OR overlaps a no-paint feature.
+  // (Per user feedback, FR-014's "blank tiles still emitted" rule was
+  // reversed — page counts at room-scale × paper-size were too high.)
   let tilePageCount = 0;
   // Per-class hole tallies across all enabled surfaces.
   const counts: Record<SizeClass, number> = { pencil: 0, largeNail: 0, smallNail: 0, pin: 0 };
@@ -135,16 +137,63 @@ export function computePreflightSummary(
 
   for (const surface of surfaces) {
     const grid = computeTileGrid(surface, job.outputOptions.paper);
-    tilePageCount += grid.rows * grid.cols;
+    const { rows, cols, cellWidthMm, cellHeightMm } = grid;
+    // Build the hole list for this surface using the same projection
+    // logic the builder uses. Then run the hole list through
+    // assignHolesToTiles so the same FR-012 ½″ split-window applies —
+    // this guarantees SC-008 (preflight count == actual page count).
+    const holesForSurface: Array<{
+      surfaceUMm: number;
+      surfaceVMm: number;
+      sizeClass: SizeClass;
+      label: string;
+      bodyKind: "star" | "planet" | "sun" | "moon";
+      apparentMag: number;
+    }> = [];
     for (const body of projectable) {
       const hits = projectBodyForSurface(body.altDeg, body.azDeg, surface, observerPosMm);
-      for (const _hit of hits) {
+      for (const hit of hits) {
         const cls = classifyMagnitude(body.mag);
         if (cls === null) continue;
         counts[cls] += 1;
         totalHoles += 1;
+        holesForSurface.push({
+          surfaceUMm: hit.uMm,
+          surfaceVMm: hit.vMm,
+          sizeClass: cls,
+          label: body.label,
+          bodyKind: body.bodyKind,
+          apparentMag: body.mag,
+        });
       }
     }
+    const holeBins = assignHolesToTiles(holesForSurface, surface, grid);
+    // No-paint features on this surface also keep their overlapping
+    // tiles non-blank (the dotted cut line still needs to be drawn).
+    const featuresOnSurface = job.room.features.filter(
+      (f) => f.surfaceId === surface.id && !f.paint,
+    );
+    const occupied = new Set<string>(holeBins.keys());
+    for (const feat of featuresOnSurface) {
+      let uMin = Infinity, uMax = -Infinity, vMin = Infinity, vMax = -Infinity;
+      for (const p of feat.outline) {
+        if (p.uMm < uMin) uMin = p.uMm;
+        if (p.uMm > uMax) uMax = p.uMm;
+        if (p.vMm < vMin) vMin = p.vMm;
+        if (p.vMm > vMax) vMax = p.vMm;
+      }
+      if (!Number.isFinite(uMin)) continue;
+      const c0 = Math.max(0, Math.floor(uMin / cellWidthMm));
+      const c1 = Math.min(cols - 1, Math.floor(uMax / cellWidthMm));
+      const r0 = Math.max(0, Math.floor(vMin / cellHeightMm));
+      const r1 = Math.min(rows - 1, Math.floor(vMax / cellHeightMm));
+      for (let r = r0; r <= r1; r++) {
+        for (let c = c0; c <= c1; c++) {
+          occupied.add(`${r},${c}`);
+        }
+      }
+    }
+    tilePageCount += occupied.size;
   }
 
   const surfaceCount = surfaces.length;

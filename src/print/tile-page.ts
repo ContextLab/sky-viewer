@@ -31,9 +31,6 @@ import {
   type Tile,
 } from "./types";
 
-/** Magnitude cutoff for emitting a small label under a hole on the tile. */
-const BRIGHT_LABEL_MAG_CUTOFF = 2.0;
-
 /** Length of each leg of the corner alignment L-marks. */
 const ALIGN_MARK_LEG_MM = 6;
 
@@ -210,12 +207,9 @@ export function emitTilePage(
     // Thin outer ring for B&W contrast (R9).
     doc.setDrawColor("0");
     doc.circle(cx, cy, radius + 0.25, "S");
-
-    // Optional small label under bright-magnitude holes.
-    if (h.apparentMag <= BRIGHT_LABEL_MAG_CUTOFF) {
-      doc.setFontSize(6);
-      doc.text(h.label, cx + radius + 0.5, cy + radius);
-    }
+    // Star labels intentionally omitted from printouts (per user
+    // feedback): names clutter the stencil and aren't useful when the
+    // user is cutting the holes by hand.
   }
 
   // ---- 6. Accessibility annotations (FR-021) ------------------------------
