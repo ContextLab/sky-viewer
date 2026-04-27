@@ -806,6 +806,25 @@ export function mountRoomEditor(host: HTMLElement, register: RegisterRefresh): v
       midHandle.dataset.segmentIndex = String(i);
       midHandle.addEventListener("pointerdown", (ev) => {
         if (activePointer !== null) return;
+        // Issue #2 follow-up: if a wall feature is armed, route the
+        // mid-handle hit through the same place-feature path as the
+        // segment-line click handler. Otherwise the mid-handle steals
+        // every click on the middle of a wall and the user can't
+        // place windows/doors/closets near the centre of any wall.
+        if (pendingFeatureType !== null) {
+          ev.preventDefault();
+          ev.stopPropagation();
+          const wallId = `wall-${i}`;
+          const placed = placePendingFeatureOnWall(pendingFeatureType, wallId);
+          document.dispatchEvent(
+            new CustomEvent("print-mode:feature-placed", {
+              detail: { type: pendingFeatureType, wallId, featureId: placed },
+            }),
+          );
+          pendingFeatureType = null;
+          openWallElevation(wallId);
+          return;
+        }
         ev.stopPropagation();
         ev.preventDefault();
         activePointer = ev.pointerId;

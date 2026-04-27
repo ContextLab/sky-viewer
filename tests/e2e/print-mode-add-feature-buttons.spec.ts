@@ -137,3 +137,73 @@ test("Add door arms place mode; clicking a wall drops a door", async ({ page }) 
   );
   expect(doors.length).toBeGreaterThanOrEqual(1);
 });
+
+// Regression for "still can't add windows/doors/closet" — the bug was
+// that segment-mid-handles (drag-to-translate circles introduced by
+// T054) sit on top of the segment-hit lines and stole the pointerdown
+// before the segment's `click` listener fired. Clicking the *centre* of
+// a wall (the most natural target) therefore did nothing. This test
+// hits the mid-handle directly so a regression here would reproduce
+// the original bug.
+test("Add closet via mid-handle (regression: drag handles must defer to place mode)", async ({
+  page,
+}) => {
+  test.setTimeout(60_000);
+  await page.goto("/");
+  await page.locator("canvas#sky[data-ready='true']").waitFor({ timeout: 10_000 });
+  await page.locator(".print-mode-trigger").click();
+  const dialog = page.locator('[role="dialog"][aria-label="Print Mode"]');
+  await expect(dialog).toBeVisible();
+  await dialog.getByRole("button", { name: /Use template.*Rectangle 12.*12 ft/i }).click();
+  await page.waitForTimeout(150);
+
+  await dialog
+    .locator(".print-mode-feature-panel")
+    .getByRole("button", { name: "Add closet" })
+    .click();
+  await expect(dialog.locator(".print-mode-place-status")).toBeVisible();
+
+  // Dispatch pointerdown directly on the SVG mid-handle for wall-2.
+  await page.evaluate(() => {
+    const handle = document.querySelector(
+      "circle.print-mode-segment-mid-handle[data-segment-index='2']",
+    ) as SVGElement | null;
+    if (!handle) throw new Error("wall-2 mid-handle not found");
+    const rect = handle.getBoundingClientRect();
+    handle.dispatchEvent(
+      new PointerEvent("pointerdown", {
+        bubbles: true,
+        cancelable: true,
+        pointerId: 1,
+        clientX: rect.left + rect.width / 2,
+        clientY: rect.top + rect.height / 2,
+      }),
+    );
+  });
+
+  await page.waitForFunction(
+    () => {
+      const raw = window.localStorage.getItem("skyViewer.printJob");
+      if (!raw) return false;
+      try {
+        const job = JSON.parse(raw);
+        return (job?.room?.features ?? []).some(
+          (f: { type: string; surfaceId: string }) =>
+            f.type === "closet" && f.surfaceId === "wall-2",
+        );
+      } catch {
+        return false;
+      }
+    },
+    { timeout: 5_000 },
+  );
+
+  const stored = await page.evaluate(
+    () => window.localStorage.getItem("skyViewer.printJob") ?? "",
+  );
+  const parsed = JSON.parse(stored);
+  const closets = (
+    parsed.room.features as Array<{ type: string; surfaceId: string }>
+  ).filter((f) => f.type === "closet" && f.surfaceId === "wall-2");
+  expect(closets.length).toBeGreaterThanOrEqual(1);
+});
