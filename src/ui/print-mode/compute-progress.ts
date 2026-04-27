@@ -154,17 +154,38 @@ export function mountComputeButton(host: HTMLElement, register: RegisterRefresh)
     }
   }
 
+  let errorClearTimer: ReturnType<typeof setTimeout> | null = null;
+
   function showError(msg: string): void {
     status.textContent = msg;
     status.classList.add("print-mode-status-error");
+    // Issue #1 — keep the error visible long enough to read & paste into a
+    // bug report. Previously the status was wiped out by the next refresh
+    // tick within ~4 s; we now hold it for 12 s before allowing clearStatus.
+    if (errorClearTimer !== null) clearTimeout(errorClearTimer);
+    errorClearTimer = setTimeout(() => {
+      errorClearTimer = null;
+    }, 12_000);
   }
 
   function clearStatus(): void {
+    // Don't clobber an error toast while it is still in its sticky window.
+    if (errorClearTimer !== null) return;
     status.textContent = "";
     status.classList.remove("print-mode-status-error");
   }
 
   function attachPdf(pdf: PdfBlob): void {
+    // Issue #1 — surface generation failures explicitly. If the builder
+    // returned an empty Blob (jsPDF internal failure) or both objectUrl
+    // and blob are unusable, the user previously saw a Download button
+    // that did nothing. Throw so the surrounding try/catch can present
+    // the error.
+    if (!pdf || !pdf.blob || pdf.blob.size === 0) {
+      throw new Error(
+        "PDF builder returned an empty document (Blob size = 0). This usually means jsPDF failed to render at least one tile.",
+      );
+    }
     // Revoke previous URL to avoid leaking blob memory across re-computes.
     if (lastPdf && lastPdf.objectUrl) {
       try {
@@ -186,13 +207,18 @@ export function mountComputeButton(host: HTMLElement, register: RegisterRefresh)
         url = "";
       }
     }
+    if (!url) {
+      throw new Error(
+        "PDF was generated but could not be exposed as a downloadable URL (URL.createObjectURL unavailable).",
+      );
+    }
     // Set both the property and the attribute so `getAttribute('href')`
     // works in every test environment (some Playwright contexts read the
     // attribute, not the property).
     downloadBtn.href = url;
     downloadBtn.setAttribute("href", url);
     downloadBtn.hidden = false;
-    status.textContent = `PDF ready — ${formatNumber(pdf.pageCount)} pages.`;
+    status.textContent = `PDF ready - ${formatNumber(pdf.pageCount)} pages.`;
     // Sync `lastJobSnapshot` to the current job. Otherwise the next
     // `refresh()` (fired by the persistence-debounce of the very
     // setObservation calls that happened during Compute) treats the
@@ -238,9 +264,15 @@ export function mountComputeButton(host: HTMLElement, register: RegisterRefresh)
       const pdf = await mod.buildPdf(job, skyDatasets, bodies);
       attachPdf(pdf);
     } catch (err) {
+      // Issue #1 — log the stack trace so users can paste it in a bug
+      // report. The status toast itself stays compact (just `message`).
       // eslint-disable-next-line no-console
-      console.error("print-mode: compute failed", err);
-      showError(err instanceof Error ? `Compute failed: ${err.message}` : "Compute failed.");
+      console.error("print-mode: compute failed", err, err instanceof Error ? err.stack : "");
+      const msg =
+        err instanceof Error && err.message
+          ? `Compute failed: ${err.message}`
+          : "Compute failed (see browser console for details).";
+      showError(msg);
     } finally {
       setBusy(false);
     }
