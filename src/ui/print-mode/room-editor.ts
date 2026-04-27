@@ -23,9 +23,22 @@
 // store change via the registered refresh callback.
 
 import { getPrintJob, setPrintJob } from "../../print/print-job-store";
+import { deriveSurfaces } from "../../print/projection";
 import { mountWallElevation } from "./wall-elevation";
 import type { RegisterRefresh } from "./print-mode";
 import type { RoomFeature } from "../../print/types";
+
+type PendingFeatureType = "window" | "door" | "closet";
+
+// Default sizes per FR-005 / common construction sizes (Issue #2).
+const PENDING_FEATURE_DEFAULTS: Record<
+  PendingFeatureType,
+  { widthMm: number; heightMm: number; sillMm: number }
+> = {
+  window: { widthMm: 600, heightMm: 900, sillMm: 900 },
+  door: { widthMm: 900, heightMm: 2030, sillMm: 0 },
+  closet: { widthMm: 1200, heightMm: 2030, sillMm: 0 },
+};
 
 const SVG_NS = "http://www.w3.org/2000/svg";
 const MM_PER_FT = 304.8;
@@ -233,7 +246,7 @@ export function mountRoomEditor(host: HTMLElement, register: RegisterRefresh): v
   const hint = document.createElement("p");
   hint.className = "print-mode-helper";
   hint.textContent =
-    "Drag vertices to resize. Double-click a segment to add a vertex; right-click a vertex to remove it. Drag the dot to move the observer.";
+    "Drag vertices to resize (Shift snaps to 90 deg, Cmd/Ctrl-click to multi-select). Double-click a segment to add a vertex; right-click a vertex to remove it. Click a wall to edit its elevation. Drag the dot to move the observer.";
   panel.append(svgWrap, hint);
 
   // Wall-elevation host - populated when a wall segment is clicked.
@@ -248,6 +261,78 @@ export function mountRoomEditor(host: HTMLElement, register: RegisterRefresh): v
       elevationUnsub = null;
     }
     elevationUnsub = mountWallElevation(elevationHost, wallId);
+  }
+
+  // Issue #2 — Listen for the feature-panel's "Add window/door/closet"
+  // arming events so we know to drop a default-sized feature on the
+  // next wall click instead of just opening the elevation panel.
+  let pendingFeatureType: PendingFeatureType | null = null;
+  const onPending = (ev: Event): void => {
+    const ce = ev as CustomEvent<{ type: PendingFeatureType | null }>;
+    pendingFeatureType = ce.detail.type;
+  };
+  document.addEventListener("print-mode:pending-feature", onPending);
+
+  /**
+   * Place a default-sized feature of `type` centred on `wallId`. Enables
+   * the wall (so the projection includes it). Returns the new feature id.
+   */
+  function placePendingFeatureOnWall(
+    type: PendingFeatureType,
+    wallId: string,
+  ): string | null {
+    const job = getPrintJob();
+    const surfaces = deriveSurfaces(job.room, job.outputOptions.blockHorizonOnWalls);
+    const wall = surfaces.find((s) => s.id === wallId && s.kind === "wall");
+    if (!wall) return null;
+    const def = PENDING_FEATURE_DEFAULTS[type];
+    // Clamp to the wall's actual extents.
+    const widthMm = Math.min(def.widthMm, Math.max(50, wall.widthMm - 50));
+    const heightMm = Math.min(def.heightMm, Math.max(50, wall.heightMm - 50));
+    const sillMm = Math.min(def.sillMm, Math.max(0, wall.heightMm - heightMm));
+    const uMin = Math.max(0, (wall.widthMm - widthMm) / 2);
+    const uMax = uMin + widthMm;
+    const vMin = sillMm;
+    const vMax = sillMm + heightMm;
+    const labelBase = type === "window" ? "Window" : type === "door" ? "Door" : "Closet";
+    const re = new RegExp("^" + labelBase + "\\s+(\\d+)\\s*$");
+    let max = 0;
+    for (const f of job.room.features) {
+      if (f.type !== type) continue;
+      const m = f.label.match(re);
+      if (m && m[1]) {
+        const n = Number(m[1]);
+        if (Number.isFinite(n) && n > max) max = n;
+      }
+    }
+    const id = `feat-${Date.now().toString(36)}-${Math.floor(Math.random() * 0xfffff).toString(36)}`;
+    const newFeature: RoomFeature = {
+      id,
+      type,
+      label: labelBase + " " + (max + 1),
+      surfaceId: wallId,
+      outline: [
+        { uMm: uMin, vMm: vMin },
+        { uMm: uMax, vMm: vMin },
+        { uMm: uMax, vMm: vMax },
+        { uMm: uMin, vMm: vMax },
+      ],
+      paint: false,
+    };
+    // Also enable the wall so the user immediately sees it accounted for.
+    const wallsEnabled = { ...(job.room.surfaceEnable.walls ?? {}) };
+    wallsEnabled[wallId] = true;
+    setPrintJob({
+      room: {
+        features: [...job.room.features, newFeature],
+        surfaceEnable: {
+          ceiling: job.room.surfaceEnable.ceiling,
+          floor: job.room.surfaceEnable.floor,
+          walls: wallsEnabled,
+        },
+      },
+    });
+    return id;
   }
 
   host.append(panel);
@@ -657,7 +742,18 @@ export function mountRoomEditor(host: HTMLElement, register: RegisterRefresh): v
       });
       seg.addEventListener("click", (ev) => {
         ev.preventDefault();
-        openWallElevation(`wall-${i}`);
+        const wallId = `wall-${i}`;
+        if (pendingFeatureType !== null) {
+          const placed = placePendingFeatureOnWall(pendingFeatureType, wallId);
+          // Tell the feature-panel to clear its armed state + button highlight.
+          document.dispatchEvent(
+            new CustomEvent("print-mode:feature-placed", {
+              detail: { type: pendingFeatureType, wallId, featureId: placed },
+            }),
+          );
+          pendingFeatureType = null;
+        }
+        openWallElevation(wallId);
       });
       segmentsGroup.append(seg);
 

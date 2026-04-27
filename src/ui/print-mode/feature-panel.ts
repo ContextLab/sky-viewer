@@ -58,15 +58,86 @@ export function mountFeaturePanel(host: HTMLElement, register: RegisterRefresh):
 
   // ---- Add buttons ----
   const addRow = document.createElement("div");
-  addRow.className = "print-mode-row";
+  addRow.className = "print-mode-row print-mode-add-feature-row";
 
   const addLightBtn = document.createElement("button");
   addLightBtn.type = "button";
   addLightBtn.className = "print-mode-secondary";
-  addLightBtn.textContent = "Add feature -> Light fixture";
+  addLightBtn.textContent = "Add light fixture";
   addLightBtn.title = "Place a 300 x 300 mm light fixture at the ceiling centre";
   addRow.append(addLightBtn);
+
+  // Issue #2 — explicit Add Window / Add Door / Add Closet buttons.
+  // Clicking one arms the room editor: the next click on a wall segment
+  // opens that wall's elevation panel and drops a default-sized feature
+  // of the chosen type. Communication happens via a CustomEvent on the
+  // panel host so the room-editor (mounted in the same column) can
+  // observe it without a shared module-level singleton.
+  const addWindowBtn = document.createElement("button");
+  addWindowBtn.type = "button";
+  addWindowBtn.className = "print-mode-secondary";
+  addWindowBtn.textContent = "Add window";
+  addWindowBtn.title = "Then click a wall to place a 600 x 900 mm window";
+
+  const addDoorBtn = document.createElement("button");
+  addDoorBtn.type = "button";
+  addDoorBtn.className = "print-mode-secondary";
+  addDoorBtn.textContent = "Add door";
+  addDoorBtn.title = "Then click a wall to place a 900 x 2030 mm door";
+
+  const addClosetBtn = document.createElement("button");
+  addClosetBtn.type = "button";
+  addClosetBtn.className = "print-mode-secondary";
+  addClosetBtn.textContent = "Add closet";
+  addClosetBtn.title = "Then click a wall to place a 1200 x 2030 mm closet opening";
+
+  addRow.append(addWindowBtn, addDoorBtn, addClosetBtn);
   panel.append(addRow);
+
+  // Status line for "Click a wall to place the [type]." (Issue #2).
+  const placeStatus = document.createElement("p");
+  placeStatus.className = "print-mode-helper print-mode-place-status";
+  placeStatus.setAttribute("aria-live", "polite");
+  placeStatus.hidden = true;
+  panel.append(placeStatus);
+
+  type PendingType = "window" | "door" | "closet";
+  let pendingType: PendingType | null = null;
+  function setPending(next: PendingType | null): void {
+    pendingType = next;
+    if (next === null) {
+      placeStatus.textContent = "";
+      placeStatus.hidden = true;
+    } else {
+      placeStatus.textContent = `Click a wall to place the ${next}.`;
+      placeStatus.hidden = false;
+    }
+    for (const [btn, t] of [
+      [addWindowBtn, "window"],
+      [addDoorBtn, "door"],
+      [addClosetBtn, "closet"],
+    ] as Array<[HTMLButtonElement, PendingType]>) {
+      btn.setAttribute("aria-pressed", String(t === next));
+    }
+    // Broadcast to the room editor.
+    document.dispatchEvent(
+      new CustomEvent("print-mode:pending-feature", { detail: { type: next } }),
+    );
+  }
+  addWindowBtn.addEventListener("click", () => {
+    setPending(pendingType === "window" ? null : "window");
+  });
+  addDoorBtn.addEventListener("click", () => {
+    setPending(pendingType === "door" ? null : "door");
+  });
+  addClosetBtn.addEventListener("click", () => {
+    setPending(pendingType === "closet" ? null : "closet");
+  });
+  // Listen for the room-editor confirming a placement so we can clear
+  // our local pending state + button highlight.
+  document.addEventListener("print-mode:feature-placed", () => {
+    setPending(null);
+  });
 
   addLightBtn.addEventListener("click", () => {
     const job = getPrintJob();
