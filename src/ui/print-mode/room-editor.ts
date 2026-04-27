@@ -15,6 +15,7 @@
 // store change via the registered refresh callback.
 
 import { getPrintJob, setPrintJob } from "../../print/print-job-store";
+import { mountWallElevation } from "./wall-elevation";
 import type { RegisterRefresh } from "./print-mode";
 
 const SVG_NS = "http://www.w3.org/2000/svg";
@@ -210,6 +211,20 @@ export function mountRoomEditor(host: HTMLElement, register: RegisterRefresh): v
     "Drag vertices to resize. Double-click a segment to add a vertex; right-click a vertex to remove it. Drag the dot to move the observer.";
   panel.append(svgWrap, hint);
 
+  // Wall-elevation host - populated when a wall segment is clicked.
+  const elevationHost = document.createElement("div");
+  elevationHost.className = "print-mode-wall-elevation-host";
+  panel.append(elevationHost);
+  let elevationUnsub: (() => void) | null = null;
+
+  function openWallElevation(wallId: string): void {
+    if (elevationUnsub) {
+      elevationUnsub();
+      elevationUnsub = null;
+    }
+    elevationUnsub = mountWallElevation(elevationHost, wallId);
+  }
+
   host.append(panel);
 
   // ---- View-transform helpers ----
@@ -332,6 +347,10 @@ export function mountRoomEditor(host: HTMLElement, register: RegisterRefresh): v
         const sp = clientToSvgPoint(ev.clientX, ev.clientY);
         const mm = svgToMm(sp.x, sp.y);
         insertVertexAt(i, mm);
+      });
+      seg.addEventListener("click", (ev) => {
+        ev.preventDefault();
+        openWallElevation(`wall-${i}`);
       });
       segmentsGroup.append(seg);
 

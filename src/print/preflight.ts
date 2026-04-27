@@ -58,7 +58,10 @@ export function computePreflightSummary(
   datasets: SkyDatasets,
   bodies: ReadonlyArray<PreflightBody> = [],
 ): PreflightSummary {
-  const surfaces = deriveSurfaces(job.room).filter((s) => s.enabled);
+  const surfaces = deriveSurfaces(
+    job.room,
+    job.outputOptions.blockHorizonOnWalls,
+  ).filter((s) => s.enabled);
   const observerPosMm = {
     x: job.room.observerPositionMm.xMm,
     y: job.room.observerPositionMm.yMm,

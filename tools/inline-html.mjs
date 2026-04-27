@@ -14,13 +14,23 @@ async function main() {
 
   // Inline CSS by replacing <link rel="stylesheet" ...>.
   // Inline JS by replacing <script type="module" src="./app.js"></script>.
+  //
+  // We pass FUNCTION replacers (not template strings) so that any "$"
+  // sequences in the bundled CSS/JS aren't accidentally interpreted as
+  // String.prototype.replace back-references ($&, $`, $', $1-$9, $$).
+  // For example, a JS template literal closing with "$" immediately
+  // before a backtick produces a "$<backtick>" byte sequence in the
+  // bundled output that would otherwise duplicate the pre-match
+  // portion of the HTML into the result. Function replacers receive
+  // the matched substring as their first argument and treat the
+  // returned string verbatim.
   const withCss = html.replace(
     /<link\s+rel=["']stylesheet["']\s+href=["']\.\/app\.css["']\s*\/?>/i,
-    `<style>\n${css}\n</style>`,
+    () => `<style>\n${css}\n</style>`,
   );
   const withJs = withCss.replace(
     /<script\s+type=["']module["']\s+src=["']\.\/app\.js["']\s*>\s*<\/script>/i,
-    `<script type="module">\n${js}\n</script>`,
+    () => `<script type="module">\n${js}\n</script>`,
   );
 
   await writeFile(resolve(DIST, "index.html"), withJs, "utf8");

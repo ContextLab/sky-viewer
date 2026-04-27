@@ -1,28 +1,29 @@
-// T034 — Output options panel for Print Mode (US1 subset).
+// T034 / T045 / T050 — Output options panel for Print Mode.
 //
 //  - Paper-size selector with all 6 presets + a Custom option that
 //    reveals two numeric inputs (W×H) and a units toggle (mm/in).
 //  - Display-units toggle (imperial/metric) — drives how the rest of
 //    Print Mode renders dimension labels.
-//  - Surface-enable section: ceiling checkbox (default ON); walls and
-//    floor checkboxes are visible but DISABLED with the "Multi-surface
-//    — see US2" hint.
-//  - "Block horizon on walls" + "Include constellation lines" are shown
-//    but disabled in US1 (US2 enables them).
+//  - Surface-enable section: ceiling checkbox + per-wall checkboxes +
+//    floor checkbox. Wall checkboxes are reactively re-rendered when
+//    `room.vertices` change (T045).
+//  - "Block horizon on walls" toggle (default ON per FR-008a).
+//  - "Include constellation lines" toggle (default OFF per R8 / T050).
 
 import { getPrintJob, setPrintJob } from "../../print/print-job-store";
-import type { PaperSize } from "../../print/types";
+import { deriveSurfaces } from "../../print/projection";
+import type { PaperSize, Surface } from "../../print/types";
 import type { RegisterRefresh } from "./print-mode";
 
 const MM_PER_INCH = 25.4;
 
 const PRESETS: Array<{ key: "letter" | "legal" | "tabloid" | "a3" | "a4" | "a5"; label: string }> = [
-  { key: "letter", label: "Letter (8.5 × 11 in)" },
-  { key: "legal", label: "Legal (8.5 × 14 in)" },
-  { key: "tabloid", label: "Tabloid (11 × 17 in)" },
-  { key: "a3", label: "A3 (297 × 420 mm)" },
-  { key: "a4", label: "A4 (210 × 297 mm)" },
-  { key: "a5", label: "A5 (148 × 210 mm)" },
+  { key: "letter", label: "Letter (8.5 x 11 in)" },
+  { key: "legal", label: "Legal (8.5 x 14 in)" },
+  { key: "tabloid", label: "Tabloid (11 x 17 in)" },
+  { key: "a3", label: "A3 (297 x 420 mm)" },
+  { key: "a4", label: "A4 (210 x 297 mm)" },
+  { key: "a5", label: "A5 (148 x 210 mm)" },
 ];
 
 export function mountOutputOptions(host: HTMLElement, register: RegisterRefresh): void {
@@ -52,11 +53,11 @@ export function mountOutputOptions(host: HTMLElement, register: RegisterRefresh)
   }
   const customOpt = document.createElement("option");
   customOpt.value = "custom";
-  customOpt.textContent = "Custom…";
+  customOpt.textContent = "Custom";
   paperSelect.append(customOpt);
   paperField.append(paperSelect);
 
-  // Custom W×H + units toggle.
+  // Custom W*H + units toggle.
   const customRow = document.createElement("div");
   customRow.className = "print-mode-row print-mode-custom-row";
 
@@ -69,7 +70,7 @@ export function mountOutputOptions(host: HTMLElement, register: RegisterRefresh)
   widthInput.setAttribute("aria-label", "Custom paper width (mm)");
 
   const sep = document.createElement("span");
-  sep.textContent = "×";
+  sep.textContent = "x";
 
   const heightInput = document.createElement("input");
   heightInput.type = "number";
@@ -161,14 +162,14 @@ export function mountOutputOptions(host: HTMLElement, register: RegisterRefresh)
   impInput.addEventListener("change", commitUnits);
   metInput.addEventListener("change", commitUnits);
 
-  // ---- Surface enable ----
+  // ---- Surface enable (T045) ----
   const surfacesField = document.createElement("fieldset");
   surfacesField.className = "print-mode-field print-mode-surfaces";
   const legend = document.createElement("legend");
   legend.textContent = "Surfaces";
   surfacesField.append(legend);
 
-  // Ceiling.
+  // Ceiling checkbox is stable.
   const ceilingLabel = document.createElement("label");
   ceilingLabel.className = "print-mode-checkbox-row";
   const ceilingInput = document.createElement("input");
@@ -177,7 +178,6 @@ export function mountOutputOptions(host: HTMLElement, register: RegisterRefresh)
   ceilingSpan.textContent = "Ceiling";
   ceilingLabel.append(ceilingInput, ceilingSpan);
   surfacesField.append(ceilingLabel);
-
   ceilingInput.addEventListener("change", () => {
     const job = getPrintJob();
     setPrintJob({
@@ -187,31 +187,32 @@ export function mountOutputOptions(host: HTMLElement, register: RegisterRefresh)
     });
   });
 
-  // Walls (disabled in US1).
-  const wallsLabel = document.createElement("label");
-  wallsLabel.className = "print-mode-checkbox-row print-mode-disabled";
-  const wallsInput = document.createElement("input");
-  wallsInput.type = "checkbox";
-  wallsInput.disabled = true;
-  const wallsSpan = document.createElement("span");
-  wallsSpan.textContent = "Walls — Multi-surface (US2)";
-  wallsLabel.append(wallsInput, wallsSpan);
-  surfacesField.append(wallsLabel);
+  // Wall checkboxes: dynamic — rebuilt whenever the floor plan changes.
+  const wallsHost = document.createElement("div");
+  wallsHost.className = "print-mode-walls-host";
+  surfacesField.append(wallsHost);
 
-  // Floor (disabled in US1).
+  // Floor checkbox.
   const floorLabel = document.createElement("label");
-  floorLabel.className = "print-mode-checkbox-row print-mode-disabled";
+  floorLabel.className = "print-mode-checkbox-row";
   const floorInput = document.createElement("input");
   floorInput.type = "checkbox";
-  floorInput.disabled = true;
   const floorSpan = document.createElement("span");
-  floorSpan.textContent = "Floor — Multi-surface (US2)";
+  floorSpan.textContent = "Floor (antipodal sky)";
   floorLabel.append(floorInput, floorSpan);
   surfacesField.append(floorLabel);
+  floorInput.addEventListener("change", () => {
+    const job = getPrintJob();
+    setPrintJob({
+      room: {
+        surfaceEnable: { ...job.room.surfaceEnable, floor: floorInput.checked },
+      },
+    });
+  });
 
   panel.append(surfacesField);
 
-  // ---- Block horizon + constellation lines (US2 deferral note) ----
+  // ---- Block horizon + Include constellation lines (T045 / T050) ----
   const advField = document.createElement("fieldset");
   advField.className = "print-mode-field print-mode-advanced";
   const advLegend = document.createElement("legend");
@@ -219,28 +220,77 @@ export function mountOutputOptions(host: HTMLElement, register: RegisterRefresh)
   advField.append(advLegend);
 
   const blockLabel = document.createElement("label");
-  blockLabel.className = "print-mode-checkbox-row print-mode-disabled";
+  blockLabel.className = "print-mode-checkbox-row";
   const blockInput = document.createElement("input");
   blockInput.type = "checkbox";
-  blockInput.disabled = true;
   const blockSpan = document.createElement("span");
-  blockSpan.textContent = "Block horizon on walls — see US2";
+  blockSpan.textContent = "Block horizon on walls";
   blockLabel.append(blockInput, blockSpan);
+  blockLabel.title =
+    "On = walls clip at the horizon line. Off = walls run continuous floor-to-ceiling, with antipodal stars filling the lower band.";
   advField.append(blockLabel);
+  blockInput.addEventListener("change", () => {
+    const job = getPrintJob();
+    setPrintJob({
+      outputOptions: {
+        ...job.outputOptions,
+        blockHorizonOnWalls: blockInput.checked,
+      },
+    });
+  });
 
   const consLabel = document.createElement("label");
-  consLabel.className = "print-mode-checkbox-row print-mode-disabled";
+  consLabel.className = "print-mode-checkbox-row";
   const consInput = document.createElement("input");
   consInput.type = "checkbox";
-  consInput.disabled = true;
   const consSpan = document.createElement("span");
-  consSpan.textContent = "Include constellation lines — see US2";
+  consSpan.textContent = "Include constellation lines";
   consLabel.append(consInput, consSpan);
+  consLabel.title =
+    "Render constellation lines as faint dashed strokes on tile pages. Off by default.";
   advField.append(consLabel);
+  consInput.addEventListener("change", () => {
+    const job = getPrintJob();
+    setPrintJob({
+      outputOptions: {
+        ...job.outputOptions,
+        includeConstellationLines: consInput.checked,
+      },
+    });
+  });
 
   panel.append(advField);
 
   host.append(panel);
+
+  // ---- Wall-checkbox renderer (rebuilt every refresh) ----
+  function renderWallCheckboxes(walls: Surface[], enableMap: Record<string, boolean>): void {
+    wallsHost.replaceChildren();
+    if (walls.length === 0) return;
+    for (const wall of walls) {
+      const lbl = document.createElement("label");
+      lbl.className = "print-mode-checkbox-row";
+      const input = document.createElement("input");
+      input.type = "checkbox";
+      input.checked = enableMap[wall.id] === true;
+      input.dataset.wallId = wall.id;
+      const span = document.createElement("span");
+      span.textContent = wall.label;
+      lbl.append(input, span);
+      input.addEventListener("change", () => {
+        const job = getPrintJob();
+        setPrintJob({
+          room: {
+            surfaceEnable: {
+              ...job.room.surfaceEnable,
+              walls: { ...job.room.surfaceEnable.walls, [wall.id]: input.checked },
+            },
+          },
+        });
+      });
+      wallsHost.append(lbl);
+    }
+  }
 
   // ---- Refresh ----
   const refresh = (): void => {
@@ -264,6 +314,13 @@ export function mountOutputOptions(host: HTMLElement, register: RegisterRefresh)
     impInput.checked = job.outputOptions.displayUnits === "imperial";
     metInput.checked = job.outputOptions.displayUnits === "metric";
     ceilingInput.checked = job.room.surfaceEnable.ceiling;
+    floorInput.checked = job.room.surfaceEnable.floor;
+    blockInput.checked = job.outputOptions.blockHorizonOnWalls;
+    consInput.checked = job.outputOptions.includeConstellationLines;
+
+    const surfaces = deriveSurfaces(job.room, job.outputOptions.blockHorizonOnWalls);
+    const walls = surfaces.filter((s) => s.kind === "wall");
+    renderWallCheckboxes(walls, job.room.surfaceEnable.walls);
   };
   register(refresh);
 }

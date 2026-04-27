@@ -103,7 +103,10 @@ function lengthInUserUnits(mm: number, units: "imperial" | "metric"): string {
 }
 
 function enabledSurfaceLabels(job: PrintJob): string {
-  const surfaces = deriveSurfaces(job.room).filter((s: Surface) => s.enabled);
+  const surfaces = deriveSurfaces(
+    job.room,
+    job.outputOptions.blockHorizonOnWalls,
+  ).filter((s: Surface) => s.enabled);
   if (surfaces.length === 0) return "(none)";
   return surfaces.map((s) => s.label).join(", ");
 }

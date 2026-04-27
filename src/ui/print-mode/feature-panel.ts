@@ -1,25 +1,29 @@
-// T033 — Feature panel for Print Mode.
+// T033 / T044 — Feature panel for Print Mode.
 //
-// US1 subset (ceiling features only):
-//   - "Add feature → Light fixture" button. Adds a 300×300 mm
-//     rectangle centred on the ceiling. (US1 ships without a "place
-//     mode" click-to-drop affordance — the rectangle drops into the
-//     centre of the ceiling immediately, then the user adjusts via the
-//     side-panel rows.)
-//   - Side-panel listing existing features:
-//       row = type label + paint/no-paint toggle + free-text label +
-//             delete button.
-//   - Light fixture default: paint=false (no-paint per FR-005).
-//   - Walls/floor/door/window features defer to US2.
+// US1 affordance: "Add feature - Light fixture" places a 300x300 mm
+// fixture at the ceiling centre.
+// US2 extension (T044): the side-panel lists EVERY feature across every
+// surface, grouped by surface label. Each row still has paint/no-paint
+// toggle + label + delete; defaults per type apply at creation
+// (FR-005 / R5).
 
 import { getPrintJob, setPrintJob } from "../../print/print-job-store";
-import type { RoomFeature } from "../../print/types";
+import { deriveSurfaces } from "../../print/projection";
+import type { RoomFeature, Surface } from "../../print/types";
 import type { RegisterRefresh } from "./print-mode";
+
+const TYPE_LABELS: Record<RoomFeature["type"], string> = {
+  lightFixture: "Light fixture",
+  recessedLight: "Recessed light",
+  window: "Window",
+  door: "Door",
+  closet: "Closet",
+  other: "Feature",
+};
 
 let nextLightFixtureNumber = 1;
 
 function nextLightLabel(existing: RoomFeature[]): string {
-  // Find the highest "Light fixture N" suffix already used.
   let max = 0;
   for (const f of existing) {
     if (f.type !== "lightFixture") continue;
@@ -34,7 +38,6 @@ function nextLightLabel(existing: RoomFeature[]): string {
 }
 
 function makeId(): string {
-  // Cheap unique-enough id; no crypto dependency. The store keys by id.
   return `feat-${Date.now().toString(36)}-${Math.floor(Math.random() * 0xfffff).toString(36)}`;
 }
 
@@ -50,7 +53,7 @@ export function mountFeaturePanel(host: HTMLElement, register: RegisterRefresh):
   const helper = document.createElement("p");
   helper.className = "print-mode-helper";
   helper.textContent =
-    "Mark room features so they render as cut lines (no-paint) or get stencilled normally (paint). Walls + doors + windows arrive in US2.";
+    "Mark room features so they render as cut lines (no-paint) or get stencilled normally (paint). Use the wall elevation editor to place windows, doors, and closets.";
   panel.append(helper);
 
   // ---- Add buttons ----
@@ -60,14 +63,13 @@ export function mountFeaturePanel(host: HTMLElement, register: RegisterRefresh):
   const addLightBtn = document.createElement("button");
   addLightBtn.type = "button";
   addLightBtn.className = "print-mode-secondary";
-  addLightBtn.textContent = "Add feature → Light fixture";
-  addLightBtn.title = "Place a 300 × 300 mm light fixture at the ceiling centre";
+  addLightBtn.textContent = "Add feature -> Light fixture";
+  addLightBtn.title = "Place a 300 x 300 mm light fixture at the ceiling centre";
   addRow.append(addLightBtn);
   panel.append(addRow);
 
   addLightBtn.addEventListener("click", () => {
     const job = getPrintJob();
-    // Compute ceiling-bbox in surface-local coords.
     let xMin = Infinity;
     let xMax = -Infinity;
     let yMin = Infinity;
@@ -79,10 +81,6 @@ export function mountFeaturePanel(host: HTMLElement, register: RegisterRefresh):
       if (v.yMm > yMax) yMax = v.yMm;
     }
     if (!Number.isFinite(xMin)) return;
-    // Surface-local origin: ceiling has originMm = (xMin, yMin, ceilingHeight),
-    // u-axis = +x, v-axis = +y. Ceiling-centre in surface-local coords is
-    // ((xMax - xMin)/2, (yMax - yMin)/2). The fixture is 300 × 300 mm centred
-    // on that point.
     const widthMm = xMax - xMin;
     const heightMm = yMax - yMin;
     const cu = widthMm / 2;
@@ -105,7 +103,6 @@ export function mountFeaturePanel(host: HTMLElement, register: RegisterRefresh):
     setPrintJob({ room: { features: [...job.room.features, newFeature] } });
   });
 
-  // ---- List of features ----
   const list = document.createElement("ul");
   list.className = "print-mode-feature-list";
   list.setAttribute("aria-label", "Existing room features");
@@ -137,18 +134,7 @@ export function mountFeaturePanel(host: HTMLElement, register: RegisterRefresh):
 
     const typeLabel = document.createElement("span");
     typeLabel.className = "print-mode-feature-type";
-    typeLabel.textContent =
-      f.type === "lightFixture"
-        ? "Light fixture"
-        : f.type === "recessedLight"
-          ? "Recessed light"
-          : f.type === "window"
-            ? "Window"
-            : f.type === "door"
-              ? "Door"
-              : f.type === "closet"
-                ? "Closet"
-                : "Other";
+    typeLabel.textContent = TYPE_LABELS[f.type];
     li.append(typeLabel);
 
     const labelInput = document.createElement("input");
@@ -186,6 +172,15 @@ export function mountFeaturePanel(host: HTMLElement, register: RegisterRefresh):
     return li;
   }
 
+  function renderSurfaceHeader(label: string): HTMLLIElement {
+    const li = document.createElement("li");
+    li.className = "print-mode-feature-surface-header";
+    const h = document.createElement("strong");
+    h.textContent = label;
+    li.append(h);
+    return li;
+  }
+
   const refresh = (): void => {
     const job = getPrintJob();
     list.replaceChildren();
@@ -196,7 +191,39 @@ export function mountFeaturePanel(host: HTMLElement, register: RegisterRefresh):
       list.append(empty);
       return;
     }
-    for (const f of job.room.features) list.append(renderFeature(f));
+
+    const surfaces: Surface[] = deriveSurfaces(
+      job.room,
+      job.outputOptions.blockHorizonOnWalls,
+    );
+    const surfaceLabel = new Map<string, string>();
+    for (const s of surfaces) surfaceLabel.set(s.id, s.label);
+
+    function rankOf(surfaceId: string): number {
+      if (surfaceId === "ceiling") return 0;
+      if (surfaceId.startsWith("wall-")) {
+        const n = Number(surfaceId.slice(5));
+        return 1 + (Number.isFinite(n) ? n : 0);
+      }
+      if (surfaceId === "floor") return 1_000_000;
+      return 999_999;
+    }
+
+    const grouped = new Map<string, RoomFeature[]>();
+    for (const f of job.room.features) {
+      let arr = grouped.get(f.surfaceId);
+      if (!arr) {
+        arr = [];
+        grouped.set(f.surfaceId, arr);
+      }
+      arr.push(f);
+    }
+    const ids = [...grouped.keys()].sort((a, b) => rankOf(a) - rankOf(b));
+    for (const sid of ids) {
+      const label = surfaceLabel.get(sid) ?? sid;
+      list.append(renderSurfaceHeader(label));
+      for (const f of grouped.get(sid)!) list.append(renderFeature(f));
+    }
   };
   register(refresh);
 }

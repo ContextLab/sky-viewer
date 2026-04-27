@@ -48,6 +48,7 @@ import {
 } from "./tile-grid";
 import {
   classifyMagnitude,
+  type ConstellationSegment,
   type FeatureCutout,
   type Hole,
   type PdfBlob,
@@ -80,7 +81,10 @@ export function buildPdf(
   bodies: ReadonlyArray<PreflightBody> = [],
 ): Promise<PdfBlobWithTiles> {
   // ---- 1. Derive surfaces, filter to enabled ------------------------------
-  const allSurfaces = deriveSurfaces(job.room);
+  const allSurfaces = deriveSurfaces(
+    job.room,
+    job.outputOptions.blockHorizonOnWalls,
+  );
   const enabled = allSurfaces.filter((s) => s.enabled);
 
   // ---- 2. Project all bodies once into (altDeg, azDeg) per the observation.
@@ -99,8 +103,12 @@ export function buildPdf(
   }
   const projBodies: ProjBody[] = [];
 
+  // Map from HR id -> (altDeg, azDeg) for constellation-line endpoints.
+  // We store it for ALL stars (regardless of magnitude class) so dim
+  // line-endpoint stars are still positioned correctly.
+  const starApparent = new Map<number, { altDeg: number; azDeg: number }>();
+
   for (const star of datasets.stars) {
-    if (classifyMagnitude(star.vmag) === null) continue;
     const epoch = precessStarToEpoch(
       star.raJ2000Rad,
       star.decJ2000Rad,
@@ -115,6 +123,8 @@ export function buildPdf(
       lonRad,
       utcSafe,
     );
+    starApparent.set(star.id, { altDeg, azDeg });
+    if (classifyMagnitude(star.vmag) === null) continue;
     projBodies.push({
       altDeg,
       azDeg,
@@ -149,6 +159,8 @@ export function buildPdf(
     holes: Hole[];
     holesByTile: Map<string, Hole[]>;
     featuresByTile: Map<string, FeatureCutout[]>;
+    /** Constellation segments grouped by tile key (US2 / R8 / T049). */
+    segmentsByTile: Map<string, ConstellationSegment[]>;
   }
   const surfaceWork: SurfaceWork[] = [];
 
@@ -211,12 +223,56 @@ export function buildPdf(
     const holesByTile = assignHolesToTiles(keptHoles, surface, grid);
     const featuresByTile = clipFeaturesToTiles(job.room.features, surface, grid);
 
+    // ---- Constellation segments (R8 / T049) -----------------------------
+    // For US2 we render lines whose BOTH endpoints land on the SAME
+    // surface (cross-surface seam splitting is deferred to Polish).
+    const segmentsByTile = new Map<string, ConstellationSegment[]>();
+    if (
+      job.outputOptions.includeConstellationLines &&
+      datasets.constellations.length > 0
+    ) {
+      const projectStarOntoSurface = (
+        hr: number,
+      ): { uMm: number; vMm: number } | null => {
+        const ap = starApparent.get(hr);
+        if (!ap) return null;
+        if (
+          surface.projectionMode === "aboveHorizon" ||
+          surface.projectionMode === "continuous"
+        ) {
+          const v = bodyToWorldVec(ap.altDeg, ap.azDeg);
+          const hit = projectBodyOntoSurface(v, surface, observerPos);
+          if (hit) return hit;
+        }
+        if (
+          surface.projectionMode === "antipodal" ||
+          surface.projectionMode === "continuous"
+        ) {
+          const apTwin = antipodalize(ap.altDeg, ap.azDeg);
+          const v = bodyToWorldVec(apTwin.altDeg, apTwin.azDeg);
+          const hit = projectBodyOntoSurface(v, surface, observerPos);
+          if (hit) return hit;
+        }
+        return null;
+      };
+
+      for (const cons of datasets.constellations) {
+        for (const pair of cons.lines) {
+          const a = projectStarOntoSurface(pair[0]);
+          const b = projectStarOntoSurface(pair[1]);
+          if (!a || !b) continue;
+          binSegmentToTiles(a, b, grid, segmentsByTile);
+        }
+      }
+    }
+
     surfaceWork.push({
       surface,
       grid,
       holes: keptHoles,
       holesByTile,
       featuresByTile,
+      segmentsByTile,
     });
   }
 
@@ -229,13 +285,14 @@ export function buildPdf(
   let pageNumber = 2; // page 1 is the cover
 
   for (const work of ordered) {
-    const { surface, grid, holesByTile, featuresByTile } = work;
+    const { surface, grid, holesByTile, featuresByTile, segmentsByTile } = work;
     const { rows, cols, cellWidthMm, cellHeightMm } = grid;
     for (let r = 0; r < rows; r++) {
       for (let c = 0; c < cols; c++) {
         const key = tileKey(r, c);
         const holes = holesByTile.get(key) ?? [];
         const featureCutouts = featuresByTile.get(key) ?? [];
+        const constellationSegments = segmentsByTile.get(key) ?? [];
         const tile: Tile = {
           surfaceId: surface.id,
           row: r,
@@ -249,7 +306,7 @@ export function buildPdf(
           },
           holes,
           featureCutouts,
-          constellationSegments: [],
+          constellationSegments,
         };
         tiles.push(tile);
         pageNumber += 1;
@@ -370,4 +427,95 @@ function pointInPolygon(
     if (intersects) inside = !inside;
   }
   return inside;
+}
+
+/**
+ * Liang-Barsky 2D line clipping against an axis-aligned rectangle.
+ * Returns the clipped (a', b') segment, or null if the line lies
+ * entirely outside the rect.
+ */
+function clipSegmentToRect(
+  ax: number,
+  ay: number,
+  bx: number,
+  by: number,
+  uMin: number,
+  vMin: number,
+  uMax: number,
+  vMax: number,
+): { ax: number; ay: number; bx: number; by: number } | null {
+  let t0 = 0;
+  let t1 = 1;
+  const dx = bx - ax;
+  const dy = by - ay;
+  const p = [-dx, dx, -dy, dy];
+  const q = [ax - uMin, uMax - ax, ay - vMin, vMax - ay];
+  for (let i = 0; i < 4; i++) {
+    const pi = p[i];
+    const qi = q[i];
+    if (pi === undefined || qi === undefined) return null;
+    if (pi === 0) {
+      if (qi < 0) return null;
+      continue;
+    }
+    const t = qi / pi;
+    if (pi < 0) {
+      if (t > t1) return null;
+      if (t > t0) t0 = t;
+    } else {
+      if (t < t0) return null;
+      if (t < t1) t1 = t;
+    }
+  }
+  return {
+    ax: ax + t0 * dx,
+    ay: ay + t0 * dy,
+    bx: ax + t1 * dx,
+    by: ay + t1 * dy,
+  };
+}
+
+/**
+ * Bin a single 2D constellation segment into the (row, col) tiles it
+ * crosses, clipping the visible portion to each tile's printable
+ * rectangle. Tiles outside the surface bounds are skipped.
+ */
+function binSegmentToTiles(
+  a: { uMm: number; vMm: number },
+  b: { uMm: number; vMm: number },
+  grid: TileGrid,
+  segmentsByTile: Map<string, ConstellationSegment[]>,
+): void {
+  const { rows, cols, cellWidthMm, cellHeightMm } = grid;
+  const uMin = Math.min(a.uMm, b.uMm);
+  const uMax = Math.max(a.uMm, b.uMm);
+  const vMin = Math.min(a.vMm, b.vMm);
+  const vMax = Math.max(a.vMm, b.vMm);
+  const cMin = Math.max(0, Math.floor(uMin / cellWidthMm));
+  const cMax = Math.min(cols - 1, Math.floor(uMax / cellWidthMm));
+  const rMin = Math.max(0, Math.floor(vMin / cellHeightMm));
+  const rMax = Math.min(rows - 1, Math.floor(vMax / cellHeightMm));
+  for (let r = rMin; r <= rMax; r++) {
+    for (let c = cMin; c <= cMax; c++) {
+      const u0 = c * cellWidthMm;
+      const u1 = (c + 1) * cellWidthMm;
+      const v0 = r * cellHeightMm;
+      const v1 = (r + 1) * cellHeightMm;
+      const clipped = clipSegmentToRect(a.uMm, a.vMm, b.uMm, b.vMm, u0, v0, u1, v1);
+      if (!clipped) continue;
+      const dx = clipped.bx - clipped.ax;
+      const dy = clipped.by - clipped.ay;
+      if (dx * dx + dy * dy < 0.01) continue;
+      const key = tileKey(r, c);
+      let list = segmentsByTile.get(key);
+      if (!list) {
+        list = [];
+        segmentsByTile.set(key, list);
+      }
+      list.push({
+        aMm: { uMm: clipped.ax, vMm: clipped.ay },
+        bMm: { uMm: clipped.bx, vMm: clipped.by },
+      });
+    }
+  }
 }

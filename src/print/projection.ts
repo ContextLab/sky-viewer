@@ -172,7 +172,13 @@ function segmentLength(
  * `enabled` is read from `room.surfaceEnable`. `projectionMode`:
  *   - ceiling: 'aboveHorizon'
  *   - floor:   'antipodal'
- *   - walls:   'aboveHorizon' (US2 / T046 will widen this).
+ *   - walls:   'aboveHorizon' if `blockHorizonOnWalls === true` (the
+ *              FR-008a default), else `'continuous'`.
+ *
+ * The `blockHorizonOnWalls` parameter is OPTIONAL and defaults to
+ * `true` so legacy single-argument call sites continue to behave the
+ * same as before US2. Production code paths (preflight, pdf-builder)
+ * pass `outputOptions.blockHorizonOnWalls` explicitly.
  *
  * `widthMm` and `heightMm`:
  *   - ceiling/floor: bounding box of the floor polygon.
@@ -185,7 +191,10 @@ function segmentLength(
  *               u along segment unit-vector (vertex[N]→vertex[N+1]);
  *               v = (0, 0, 1) (up).
  */
-export function deriveSurfaces(room: Room): Surface[] {
+export function deriveSurfaces(
+  room: Room,
+  blockHorizonOnWalls: boolean = true,
+): Surface[] {
   const bbox = floorBoundingBox(room.vertices);
   const widthMm = bbox.xMax - bbox.xMin;
   const heightMm = bbox.yMax - bbox.yMin;
@@ -261,7 +270,7 @@ export function deriveSurfaces(room: Room): Surface[] {
           vAxisMm: v3(0, 0, 1),
         },
         enabled,
-        projectionMode: "aboveHorizon",
+        projectionMode: blockHorizonOnWalls ? "aboveHorizon" : "continuous",
       });
     }
   }
