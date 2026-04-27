@@ -48,6 +48,7 @@ import { mountLayerToggles } from "../ui/layer-toggles";
 import { mountNightModeToggle } from "../ui/night-mode";
 import { mountRedLightMode } from "../ui/red-light-mode";
 import { mountObjectLabels, type LabelableObjects } from "../ui/object-labels";
+import { mountPrintMode } from "../ui/print-mode/print-mode";
 import { STAR_NAMES } from "../astro/star-names";
 import { precessStarToEpoch } from "../astro/stars";
 import {
@@ -418,6 +419,7 @@ async function boot(): Promise<void> {
   mountLayerToggles(bottomRight);
   mountNightModeToggle(topRight);
   mountRedLightMode(topRight);
+  mountPrintMode(topRight);
 
   // DOM overlay labels. `currentLabels` is updated each frame below; the
   // overlay reads it via the getter so we don't have to call setters from

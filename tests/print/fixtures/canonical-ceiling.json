@@ -1,0 +1,49 @@
+{
+  "schemaVersion": 1,
+  "observation": {
+    "schemaVersion": 1,
+    "utcInstant": "1969-12-13T05:00:00.000Z",
+    "localDate": "1969-12-13",
+    "localTime": "00:00",
+    "timeZone": "America/New_York",
+    "utcOffsetMinutes": -300,
+    "location": {
+      "lat": 43.7044,
+      "lon": -72.2887,
+      "label": "Moore Hall, Dartmouth College, Hanover, NH"
+    },
+    "bearingDeg": 0,
+    "pitchDeg": 0,
+    "fovDeg": 90,
+    "playback": { "rate": 60, "paused": false },
+    "layers": {
+      "constellationLines": true,
+      "constellationLabels": true,
+      "planetLabels": true,
+      "brightStarLabels": false
+    }
+  },
+  "room": {
+    "vertices": [
+      { "xMm": -1828.8, "yMm": -1828.8 },
+      { "xMm": 1828.8, "yMm": -1828.8 },
+      { "xMm": 1828.8, "yMm": 1828.8 },
+      { "xMm": -1828.8, "yMm": 1828.8 }
+    ],
+    "ceilingHeightMm": 2438,
+    "observerPositionMm": { "xMm": 0, "yMm": 0, "eyeHeightMm": 1520 },
+    "features": [],
+    "surfaceEnable": {
+      "ceiling": true,
+      "floor": false,
+      "walls": {}
+    }
+  },
+  "outputOptions": {
+    "paper": { "kind": "preset", "preset": "letter" },
+    "displayUnits": "imperial",
+    "blockHorizonOnWalls": true,
+    "includeConstellationLines": false
+  },
+  "lastComputedAt": null
+}
