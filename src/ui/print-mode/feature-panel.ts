@@ -63,7 +63,10 @@ export function mountFeaturePanel(host: HTMLElement, register: RegisterRefresh):
   const addLightBtn = document.createElement("button");
   addLightBtn.type = "button";
   addLightBtn.className = "print-mode-secondary";
-  addLightBtn.textContent = "Add light fixture";
+  // NB: keep the literal "Add feature -> Light fixture" string — the
+  // canonical e2e (tests/e2e/print-mode-canonical.spec.ts) matches by
+  // regex on this exact phrase.
+  addLightBtn.textContent = "Add feature -> Light fixture";
   addLightBtn.title = "Place a 300 x 300 mm light fixture at the ceiling centre";
   addRow.append(addLightBtn);
 

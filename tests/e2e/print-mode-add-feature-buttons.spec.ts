@@ -57,8 +57,21 @@ test("Add window arms place mode; clicking a wall drops a no-paint window on it"
   await expect(placeStatus).toBeHidden();
   await expect(addWindowBtn).toHaveAttribute("aria-pressed", "false");
 
-  // Wait past the 500 ms persistence-debounce so localStorage reflects state.
-  await page.waitForTimeout(700);
+  // Poll for the window to appear in localStorage (up to 5 s) — under
+  // parallel test load the 500 ms persistence-debounce can be longer.
+  await page.waitForFunction(() => {
+    const raw = window.localStorage.getItem("skyViewer.printJob");
+    if (!raw) return false;
+    try {
+      const job = JSON.parse(raw);
+      return (job?.room?.features ?? []).some(
+        (f: { type: string; surfaceId: string; paint: boolean }) =>
+          f.type === "window" && f.surfaceId === "wall-0" && f.paint === false,
+      );
+    } catch {
+      return false;
+    }
+  }, { timeout: 5_000 });
 
   // The store must now contain a window feature on wall-0 with paint=false.
   const featuresJson = await page.evaluate(() => {
@@ -92,12 +105,31 @@ test("Add door arms place mode; clicking a wall drops a door", async ({ page }) 
   await page.waitForTimeout(150);
 
   await dialog.locator(".print-mode-feature-panel").getByRole("button", { name: "Add door" }).click();
+  // Wait for the pending-feature status to be visible (confirming the
+  // event listener is attached and the click was processed) before
+  // clicking the wall. Under parallel load, racing past this checkpoint
+  // can cause the segment click to fire while pendingFeatureType is
+  // still null in the room editor.
+  await expect(dialog.locator(".print-mode-place-status")).toBeVisible();
   await page.evaluate(() => {
     const seg = document.querySelector(".print-mode-segment-hit[data-segment-index='1']") as SVGElement | null;
     if (!seg) throw new Error("wall-1 segment hit not found");
     seg.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
   });
-  await page.waitForTimeout(700);
+  // Poll for the door to appear in localStorage (up to 5 s) — the
+  // 500 ms persistence-debounce can be longer under parallel load.
+  await page.waitForFunction(() => {
+    const raw = window.localStorage.getItem("skyViewer.printJob");
+    if (!raw) return false;
+    try {
+      const job = JSON.parse(raw);
+      return (job?.room?.features ?? []).some(
+        (f: { type: string; surfaceId: string }) => f.type === "door" && f.surfaceId === "wall-1",
+      );
+    } catch {
+      return false;
+    }
+  }, { timeout: 5_000 });
   const featuresJson = await page.evaluate(() => window.localStorage.getItem("skyViewer.printJob") ?? "");
   const parsed = JSON.parse(featuresJson);
   const doors = (parsed.room.features as Array<{ type: string; surfaceId: string }>).filter(
