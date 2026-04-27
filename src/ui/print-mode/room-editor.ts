@@ -426,12 +426,25 @@ export function mountRoomEditor(host: HTMLElement, register: RegisterRefresh): v
   let longPressTimer: ReturnType<typeof setTimeout> | null = null;
   let longPressIndex = -1;
   let selectedFeatureId: string | null = null;
+  // Issue #6 — multi-vertex selection. A plain click on a vertex resets
+  // the set to {idx}. Cmd/Ctrl-click toggles {idx} in the set without
+  // clearing other entries.
+  const selectedVertices = new Set<number>();
 
   function deleteVertex(index: number): void {
     const job = getPrintJob();
     if (job.room.vertices.length <= 4) return;
     const next = job.room.vertices.slice();
     next.splice(index, 1);
+    // Issue #6 — keep the multi-select set in sync after a removal:
+    // every index past `index` shifts down by 1.
+    const reindexed = new Set<number>();
+    for (const i of selectedVertices) {
+      if (i === index) continue;
+      reindexed.add(i > index ? i - 1 : i);
+    }
+    selectedVertices.clear();
+    for (const i of reindexed) selectedVertices.add(i);
     setPrintJob({ room: { vertices: next } });
   }
 
@@ -848,16 +861,20 @@ export function mountRoomEditor(host: HTMLElement, register: RegisterRefresh): v
       hitArea.dataset.vertexIndex = String(i);
       vertexGroup.append(hitArea);
 
+      // Issue #6 — visually flag selected vertices with a brighter ring.
+      const isSel = selectedVertices.has(i);
       const handle = svgEl("circle", {
         cx: p.x,
         cy: p.y,
-        r: 6,
-        fill: "var(--accent)",
-        stroke: "#111",
-        "stroke-width": 1.5,
-        class: "print-mode-vertex-handle",
+        r: isSel ? 8 : 6,
+        fill: isSel ? "#fff" : "var(--accent)",
+        stroke: isSel ? "var(--accent)" : "#111",
+        "stroke-width": isSel ? 2.5 : 1.5,
+        class: isSel
+          ? "print-mode-vertex-handle print-mode-vertex-handle-selected"
+          : "print-mode-vertex-handle",
         role: "button",
-        "aria-label": `Vertex ${i + 1} of ${verts.length}`,
+        "aria-label": `Vertex ${i + 1} of ${verts.length}${isSel ? " (selected)" : ""}`,
         tabindex: 0,
       }) as SVGCircleElement;
       handle.style.cursor = "grab";
@@ -867,9 +884,19 @@ export function mountRoomEditor(host: HTMLElement, register: RegisterRefresh): v
       hitArea.style.cursor = "grab";
       hitArea.addEventListener("pointerdown", (ev) => {
         if (activePointer !== null) return;
+        // Issue #6 — Cmd/Ctrl-click toggles `i` in the multi-select set.
+        // Plain click resets selection to {i}.
+        if (ev.metaKey || ev.ctrlKey) {
+          if (selectedVertices.has(i)) selectedVertices.delete(i);
+          else selectedVertices.add(i);
+        } else if (!selectedVertices.has(i)) {
+          selectedVertices.clear();
+          selectedVertices.add(i);
+        }
         activePointer = ev.pointerId;
         drag = { kind: "vertex", index: i };
         hitArea.setPointerCapture(ev.pointerId);
+        render();
         ev.preventDefault();
       });
       hitArea.addEventListener("contextmenu", (ev) => {
@@ -879,9 +906,18 @@ export function mountRoomEditor(host: HTMLElement, register: RegisterRefresh): v
 
       handle.addEventListener("pointerdown", (ev) => {
         if (activePointer !== null) return;
+        // Issue #6 — Cmd/Ctrl-click multi-select.
+        if (ev.metaKey || ev.ctrlKey) {
+          if (selectedVertices.has(i)) selectedVertices.delete(i);
+          else selectedVertices.add(i);
+        } else if (!selectedVertices.has(i)) {
+          selectedVertices.clear();
+          selectedVertices.add(i);
+        }
         activePointer = ev.pointerId;
         drag = { kind: "vertex", index: i };
         handle.setPointerCapture(ev.pointerId);
+        render();
         ev.preventDefault();
         // Long-press to delete on touch devices.
         if (ev.pointerType === "touch") {
@@ -929,7 +965,38 @@ export function mountRoomEditor(host: HTMLElement, register: RegisterRefresh): v
       const next = job.room.vertices.slice();
       const idx = drag.index;
       if (idx >= 0 && idx < next.length) {
-        next[idx] = { xMm: mm.xMm, yMm: mm.yMm };
+        let targetX = mm.xMm;
+        let targetY = mm.yMm;
+        // Issue #5 — Shift-drag: project the pointer onto the nearest
+        // cardinal axis from the previous neighbour (so the new segment
+        // is purely horizontal or purely vertical).
+        if (ev.shiftKey) {
+          const prevIdx = (idx - 1 + next.length) % next.length;
+          const prev = next[prevIdx];
+          if (prev) {
+            const dx = mm.xMm - prev.xMm;
+            const dy = mm.yMm - prev.yMm;
+            if (Math.abs(dx) >= Math.abs(dy)) {
+              targetY = prev.yMm; // horizontal segment
+            } else {
+              targetX = prev.xMm; // vertical segment
+            }
+          }
+        }
+        // Issue #6 — multi-vertex drag: if the dragged vertex is in the
+        // selectedVertices set, translate ALL selected vertices by the
+        // same delta. Otherwise just move this one.
+        const dxMm = targetX - next[idx]!.xMm;
+        const dyMm = targetY - next[idx]!.yMm;
+        if (selectedVertices.has(idx) && selectedVertices.size > 1) {
+          for (const i of selectedVertices) {
+            const v = next[i];
+            if (!v) continue;
+            next[i] = { xMm: v.xMm + dxMm, yMm: v.yMm + dyMm };
+          }
+        } else {
+          next[idx] = { xMm: targetX, yMm: targetY };
+        }
         setPrintJob({ room: { vertices: next } });
       }
     } else if (drag.kind === "observer") {
