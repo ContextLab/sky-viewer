@@ -69,7 +69,12 @@ test("enabling Floor produces antipodal-sky pages with row/col labels", async ({
   // Read the page count from the download button's status text and
   // assert it grew vs. the ceiling-only baseline. The status text is
   // set in compute-progress.ts as "PDF ready - N pages.".
-  const status = dialog.locator(".print-mode-status");
+  // Disambiguate from .print-mode-preview-3d-status — the 3D preview
+  // (branch 003-print-mode-ux-fixes) reuses the base class for its own
+  // "Click Refresh stars to compute the preview" message.
+  const status = dialog.locator(
+    ".print-mode-status:not(.print-mode-preview-3d-status)",
+  );
   const statusText = (await status.textContent()) ?? "";
   const pageMatch = statusText.match(/(\d+)\s+pages?/i);
   expect(pageMatch, `status text was: "${statusText}"`).toBeTruthy();
