@@ -1,6 +1,6 @@
-// T032 — SVG floor-plan room editor for Print Mode.
+// T032 / T054 — SVG floor-plan room editor for Print Mode.
 //
-// US1 subset:
+// US1 subset (T032):
 //   - "Use template → Rectangle 12×12 ft" button.
 //   - Draggable polygon vertices (mouse + touch via pointer events).
 //   - Double-click on a segment inserts a new vertex at the click point.
@@ -11,12 +11,21 @@
 //   - Numeric observer eye-height input (1000..2200 mm).
 //   - Display-units-aware labels (ft vs m).
 //
+// US3 extension (T054):
+//   - Segment-translation drag: dragging the middle of a segment
+//     translates BOTH endpoint vertices along the segment's outward
+//     normal so the wall slides parallel to itself.
+//   - Ceiling-feature edit handles: when a ceiling feature is shown in
+//     the floor plan, dragging its body translates it; corner handles
+//     resize. Edit happens via patches to the feature's outline.
+//
 // All edits commit through `setPrintJob`. The editor re-paints on every
 // store change via the registered refresh callback.
 
 import { getPrintJob, setPrintJob } from "../../print/print-job-store";
 import { mountWallElevation } from "./wall-elevation";
 import type { RegisterRefresh } from "./print-mode";
+import type { RoomFeature } from "../../print/types";
 
 const SVG_NS = "http://www.w3.org/2000/svg";
 const MM_PER_FT = 304.8;
@@ -174,6 +183,12 @@ export function mountRoomEditor(host: HTMLElement, register: RegisterRefresh): v
   const segmentsGroup = svgEl("g", { class: "print-mode-segments" }) as SVGGElement;
   root.append(segmentsGroup);
 
+  const segmentMidGroup = svgEl("g", { class: "print-mode-segment-mids" }) as SVGGElement;
+  root.append(segmentMidGroup);
+
+  const featuresGroup = svgEl("g", { class: "print-mode-floor-features" }) as SVGGElement;
+  root.append(featuresGroup);
+
   const vertexGroup = svgEl("g", { class: "print-mode-vertices" }) as SVGGElement;
   root.append(vertexGroup);
 
@@ -183,6 +198,16 @@ export function mountRoomEditor(host: HTMLElement, register: RegisterRefresh): v
     "aria-label": "Observer position",
     tabindex: 0,
   }) as SVGGElement;
+  // T058: invisible 22-px-radius hit area for tap targets ≥ 44 x 44 px.
+  observerHandle.append(
+    svgEl("circle", {
+      cx: 0,
+      cy: 0,
+      r: 26,
+      fill: "transparent",
+      class: "print-mode-observer-hit",
+    }),
+  );
   observerHandle.append(
     svgEl("circle", {
       cx: 0,
@@ -286,11 +311,36 @@ export function mountRoomEditor(host: HTMLElement, register: RegisterRefresh): v
   }
 
   // ---- Drag state ----
-  type DragMode = { kind: "vertex"; index: number } | { kind: "observer" };
+  type DragMode =
+    | { kind: "vertex"; index: number }
+    | { kind: "observer" }
+    | {
+        kind: "segment";
+        index: number;
+        startA: Vertex;
+        startB: Vertex;
+        startMm: { xMm: number; yMm: number };
+      }
+    | {
+        kind: "feature-body";
+        featureId: string;
+        startMm: { xMm: number; yMm: number };
+        startOutline: ReadonlyArray<{ uMm: number; vMm: number }>;
+        bbox: { uMin: number; uMax: number; vMin: number; vMax: number };
+      }
+    | {
+        kind: "feature-handle";
+        featureId: string;
+        handle: "nw" | "ne" | "se" | "sw" | "n" | "e" | "s" | "w";
+        startMm: { xMm: number; yMm: number };
+        startOutline: ReadonlyArray<{ uMm: number; vMm: number }>;
+        bbox: { uMin: number; uMax: number; vMin: number; vMax: number };
+      };
   let drag: DragMode | null = null;
   let activePointer: number | null = null;
   let longPressTimer: ReturnType<typeof setTimeout> | null = null;
   let longPressIndex = -1;
+  let selectedFeatureId: string | null = null;
 
   function deleteVertex(index: number): void {
     const job = getPrintJob();
@@ -305,6 +355,262 @@ export function mountRoomEditor(host: HTMLElement, register: RegisterRefresh): v
     const next = job.room.vertices.slice();
     next.splice(segmentIndex + 1, 0, { xMm: ptMm.xMm, yMm: ptMm.yMm });
     setPrintJob({ room: { vertices: next } });
+  }
+
+  /**
+   * Translate the two endpoints of segment `i` (between vertices i and
+   * (i+1)%N) along the segment's outward normal so the wall slides
+   * parallel to itself. The normal points away from the polygon
+   * centroid (so dragging "outward" enlarges the room).
+   */
+  function translateSegment(
+    segmentIndex: number,
+    startA: Vertex,
+    startB: Vertex,
+    deltaMm: { dxMm: number; dyMm: number },
+  ): void {
+    const job = getPrintJob();
+    const verts = job.room.vertices;
+    if (verts.length < 3) return;
+    const a = startA;
+    const b = startB;
+    // Segment direction unit vector.
+    const sdx = b.xMm - a.xMm;
+    const sdy = b.yMm - a.yMm;
+    const sLen = Math.hypot(sdx, sdy);
+    if (sLen < 1e-6) return;
+    // Outward-pointing normal — pick the perpendicular direction
+    // pointing away from the polygon centroid.
+    let cx = 0;
+    let cy = 0;
+    for (const v of verts) {
+      cx += v.xMm;
+      cy += v.yMm;
+    }
+    cx /= verts.length;
+    cy /= verts.length;
+    const midX = (a.xMm + b.xMm) / 2;
+    const midY = (a.yMm + b.yMm) / 2;
+    let nx = -sdy / sLen;
+    let ny = sdx / sLen;
+    // Flip if pointing toward the centroid.
+    if ((midX - cx) * nx + (midY - cy) * ny < 0) {
+      nx = -nx;
+      ny = -ny;
+    }
+    // Project the cursor displacement onto the outward normal — so the
+    // wall slides cleanly parallel to itself regardless of cursor jitter
+    // along the segment direction.
+    const proj = deltaMm.dxMm * nx + deltaMm.dyMm * ny;
+    const offsX = nx * proj;
+    const offsY = ny * proj;
+    const next = verts.slice();
+    const idxA = segmentIndex;
+    const idxB = (segmentIndex + 1) % verts.length;
+    next[idxA] = { xMm: a.xMm + offsX, yMm: a.yMm + offsY };
+    next[idxB] = { xMm: b.xMm + offsX, yMm: b.yMm + offsY };
+    setPrintJob({ room: { vertices: next } });
+  }
+
+  function bboxOfOutline(
+    outline: ReadonlyArray<{ uMm: number; vMm: number }>,
+  ): { uMin: number; uMax: number; vMin: number; vMax: number } {
+    let uMin = Infinity;
+    let uMax = -Infinity;
+    let vMin = Infinity;
+    let vMax = -Infinity;
+    for (const p of outline) {
+      if (p.uMm < uMin) uMin = p.uMm;
+      if (p.uMm > uMax) uMax = p.uMm;
+      if (p.vMm < vMin) vMin = p.vMm;
+      if (p.vMm > vMax) vMax = p.vMm;
+    }
+    return { uMin, uMax, vMin, vMax };
+  }
+
+  /**
+   * Convert ceiling-surface (u, v) coords to floor-plan (x, y) coords.
+   * The ceiling-surface origin sits at the floor-polygon bbox min; the
+   * u-axis is +x and the v-axis is +y in room coordinates. (See
+   * src/print/projection.ts § deriveSurfaces — ceiling/floor cases.)
+   */
+  function uvToRoomMm(uMm: number, vMm: number, xMin: number, yMin: number): { xMm: number; yMm: number } {
+    return { xMm: xMin + uMm, yMm: yMin + vMm };
+  }
+
+  function updateFeatureOutline(
+    featureId: string,
+    nextOutline: Array<{ uMm: number; vMm: number }>,
+  ): void {
+    const job = getPrintJob();
+    const next = job.room.features.map((f) =>
+      f.id === featureId ? { ...f, outline: nextOutline } : f,
+    );
+    setPrintJob({ room: { features: next } });
+  }
+
+  function applyFeatureBodyDrag(
+    featureId: string,
+    startOutline: ReadonlyArray<{ uMm: number; vMm: number }>,
+    duMm: number,
+    dvMm: number,
+  ): void {
+    const next = startOutline.map((p) => ({ uMm: p.uMm + duMm, vMm: p.vMm + dvMm }));
+    updateFeatureOutline(featureId, next);
+  }
+
+  function applyFeatureHandleDrag(
+    featureId: string,
+    handle: "nw" | "ne" | "se" | "sw" | "n" | "e" | "s" | "w",
+    startBbox: { uMin: number; uMax: number; vMin: number; vMax: number },
+    duMm: number,
+    dvMm: number,
+  ): void {
+    let { uMin, uMax, vMin, vMax } = startBbox;
+    const MIN = 50; // 5 cm minimum dimension
+    if (handle.includes("w")) uMin = Math.min(uMin + duMm, uMax - MIN);
+    if (handle.includes("e")) uMax = Math.max(uMax + duMm, uMin + MIN);
+    if (handle.includes("n")) vMax = Math.max(vMax + dvMm, vMin + MIN);
+    if (handle.includes("s")) vMin = Math.min(vMin + dvMm, vMax - MIN);
+    const nextOutline = [
+      { uMm: uMin, vMm: vMin },
+      { uMm: uMax, vMm: vMin },
+      { uMm: uMax, vMm: vMax },
+      { uMm: uMin, vMm: vMax },
+    ];
+    updateFeatureOutline(featureId, nextOutline);
+  }
+
+  // ---- Render: ceiling feature with edit handles ----
+  function renderCeilingFeature(f: RoomFeature, xMinMm: number, yMinMm: number): void {
+    const bbox = bboxOfOutline(f.outline);
+    const tl = uvToRoomMm(bbox.uMin, bbox.vMin, xMinMm, yMinMm);
+    const br = uvToRoomMm(bbox.uMax, bbox.vMax, xMinMm, yMinMm);
+    const ptl = mmToSvg(tl.xMm, tl.yMm);
+    const pbr = mmToSvg(br.xMm, br.yMm);
+    // SVG y-flip: the smaller v -> larger SVG y. Compute the SVG bbox.
+    const svgX = Math.min(ptl.x, pbr.x);
+    const svgY = Math.min(ptl.y, pbr.y);
+    const svgW = Math.abs(pbr.x - ptl.x);
+    const svgH = Math.abs(pbr.y - ptl.y);
+    const isSelected = selectedFeatureId === f.id;
+    const stroke = f.paint ? "rgba(120, 200, 120, 0.9)" : "rgba(245, 215, 110, 0.9)";
+    const fill = f.paint ? "rgba(120, 200, 120, 0.18)" : "rgba(245, 215, 110, 0.18)";
+    const body = svgEl("rect", {
+      x: svgX,
+      y: svgY,
+      width: svgW,
+      height: svgH,
+      fill,
+      stroke,
+      "stroke-width": isSelected ? 2 : 1.2,
+      "stroke-dasharray": f.paint ? "" : "4 2",
+      class: "print-mode-feature-body",
+      role: "button",
+      "aria-label": `${f.label} (${f.paint ? "paint" : "no-paint"})`,
+      tabindex: 0,
+    }) as SVGRectElement;
+    body.style.cursor = "move";
+    body.dataset.featureId = f.id;
+    body.addEventListener("pointerdown", (ev) => {
+      if (activePointer !== null) return;
+      ev.stopPropagation();
+      ev.preventDefault();
+      activePointer = ev.pointerId;
+      selectedFeatureId = f.id;
+      const sp = clientToSvgPoint(ev.clientX, ev.clientY);
+      const mm = svgToMm(sp.x, sp.y);
+      drag = {
+        kind: "feature-body",
+        featureId: f.id,
+        startMm: mm,
+        startOutline: f.outline.slice(),
+        bbox,
+      };
+      body.setPointerCapture(ev.pointerId);
+      // Force re-render to draw resize handles.
+      render();
+    });
+    body.addEventListener("click", (ev) => {
+      ev.stopPropagation();
+      selectedFeatureId = selectedFeatureId === f.id ? null : f.id;
+      render();
+    });
+    featuresGroup.append(body);
+
+    const labelEl = svgEl("text", {
+      x: svgX + svgW / 2,
+      y: svgY + svgH / 2,
+      "text-anchor": "middle",
+      "dominant-baseline": "middle",
+      "font-size": 10,
+      fill: "var(--fg)",
+      "font-family": "var(--font-mono)",
+      "pointer-events": "none",
+    });
+    labelEl.textContent = f.label;
+    featuresGroup.append(labelEl);
+
+    if (!isSelected) return;
+
+    // 8 resize handles: 4 corners + 4 edge midpoints. The handle's
+    // direction maps to which edges the bbox should grow toward.
+    const handles: Array<{
+      x: number;
+      y: number;
+      dir: "nw" | "ne" | "se" | "sw" | "n" | "e" | "s" | "w";
+      cursor: string;
+    }> = [
+      { x: svgX, y: svgY, dir: "nw", cursor: "nwse-resize" },
+      { x: svgX + svgW, y: svgY, dir: "ne", cursor: "nesw-resize" },
+      { x: svgX + svgW, y: svgY + svgH, dir: "se", cursor: "nwse-resize" },
+      { x: svgX, y: svgY + svgH, dir: "sw", cursor: "nesw-resize" },
+      { x: svgX + svgW / 2, y: svgY, dir: "n", cursor: "ns-resize" },
+      { x: svgX + svgW, y: svgY + svgH / 2, dir: "e", cursor: "ew-resize" },
+      { x: svgX + svgW / 2, y: svgY + svgH, dir: "s", cursor: "ns-resize" },
+      { x: svgX, y: svgY + svgH / 2, dir: "w", cursor: "ew-resize" },
+    ];
+    for (const h of handles) {
+      // For the floor-plan SVG, the v-axis flips between room +y and
+      // svg-down. North-of-bbox in SVG space is the smallest y; the
+      // u/v "n" handle (vMax) maps to that. The mapping is set
+      // correctly because we computed svgX/svgY from min/max already.
+      const handleEl = svgEl("rect", {
+        x: h.x - 5,
+        y: h.y - 5,
+        width: 10,
+        height: 10,
+        fill: "var(--accent)",
+        stroke: "#111",
+        "stroke-width": 1,
+        class: `print-mode-feature-handle print-mode-feature-handle-${h.dir}`,
+      }) as SVGRectElement;
+      handleEl.style.cursor = h.cursor;
+      handleEl.dataset.featureId = f.id;
+      handleEl.dataset.handleDir = h.dir;
+      handleEl.addEventListener("pointerdown", (ev) => {
+        if (activePointer !== null) return;
+        ev.stopPropagation();
+        ev.preventDefault();
+        activePointer = ev.pointerId;
+        const sp = clientToSvgPoint(ev.clientX, ev.clientY);
+        const mm = svgToMm(sp.x, sp.y);
+        // The "n" handle in svg-space corresponds to vMax (top of room
+        // SVG = larger v). We mirror the n/s direction when computing
+        // the actual u/v delta so the handle "grows" in the expected
+        // direction. The mapping is encoded in applyFeatureHandleDrag.
+        drag = {
+          kind: "feature-handle",
+          featureId: f.id,
+          handle: h.dir,
+          startMm: mm,
+          startOutline: f.outline.slice(),
+          bbox,
+        };
+        handleEl.setPointerCapture(ev.pointerId);
+      });
+      featuresGroup.append(handleEl);
+    }
   }
 
   // ---- Render ----
@@ -325,6 +631,7 @@ export function mountRoomEditor(host: HTMLElement, register: RegisterRefresh): v
 
     // Segments (transparent thick clickable surfaces for dbl-click insert).
     segmentsGroup.replaceChildren();
+    segmentMidGroup.replaceChildren();
     for (let i = 0; i < verts.length; i++) {
       const a = verts[i];
       const b = verts[(i + 1) % verts.length];
@@ -368,6 +675,61 @@ export function mountRoomEditor(host: HTMLElement, register: RegisterRefresh): v
       });
       lenLabel.textContent = mmToDisplay(segLenMm, job.outputOptions.displayUnits);
       segmentsGroup.append(lenLabel);
+
+      // T054: segment-translation drag handle (a small visible dot at
+      // the midpoint that, when dragged, slides the wall parallel to
+      // itself along its outward normal). Tap target is ≥ 12 px so it
+      // remains usable on touch devices (SC-010 covered separately by
+      // T058 mobile pass).
+      const midHandle = svgEl("circle", {
+        cx: midX,
+        cy: midY,
+        r: 7,
+        fill: "rgba(245, 215, 110, 0.85)",
+        stroke: "#111",
+        "stroke-width": 1.5,
+        class: "print-mode-segment-mid-handle",
+        role: "button",
+        "aria-label": `Drag wall ${i + 1} of ${verts.length}`,
+        tabindex: 0,
+      }) as SVGCircleElement;
+      midHandle.style.cursor = "move";
+      midHandle.dataset.segmentIndex = String(i);
+      midHandle.addEventListener("pointerdown", (ev) => {
+        if (activePointer !== null) return;
+        ev.stopPropagation();
+        ev.preventDefault();
+        activePointer = ev.pointerId;
+        const sp = clientToSvgPoint(ev.clientX, ev.clientY);
+        const mm = svgToMm(sp.x, sp.y);
+        drag = {
+          kind: "segment",
+          index: i,
+          startA: { xMm: a.xMm, yMm: a.yMm },
+          startB: { xMm: b.xMm, yMm: b.yMm },
+          startMm: { xMm: mm.xMm, yMm: mm.yMm },
+        };
+        midHandle.setPointerCapture(ev.pointerId);
+      });
+      segmentMidGroup.append(midHandle);
+    }
+
+    // T054: ceiling-feature edit handles. Render the bounding box of
+    // each ceiling feature on the floor plan with body-drag + 8 resize
+    // handles when selected. Wall features are edited in the wall
+    // elevation panel; floor features are uncommon in MVP.
+    featuresGroup.replaceChildren();
+    let xMin = Infinity;
+    let yMin = Infinity;
+    for (const v of verts) {
+      if (v.xMm < xMin) xMin = v.xMm;
+      if (v.yMm < yMin) yMin = v.yMm;
+    }
+    if (Number.isFinite(xMin) && Number.isFinite(yMin)) {
+      for (const f of job.room.features) {
+        if (f.surfaceId !== "ceiling") continue;
+        renderCeilingFeature(f, xMin, yMin);
+      }
     }
 
     // Vertices.
@@ -376,6 +738,20 @@ export function mountRoomEditor(host: HTMLElement, register: RegisterRefresh): v
       const v = verts[i];
       if (!v) continue;
       const p = mmToSvg(v.xMm, v.yMm);
+      // T058: invisible 26-px-radius hit area for ≥ 44 x 44 px tap target
+      // (some viewport scales bring 22-px-radius below 44 px CSS; 26 is
+      // a safe margin).
+      const hitArea = svgEl("circle", {
+        cx: p.x,
+        cy: p.y,
+        r: 26,
+        fill: "transparent",
+        class: "print-mode-vertex-hit",
+        "pointer-events": "all",
+      }) as SVGCircleElement;
+      hitArea.dataset.vertexIndex = String(i);
+      vertexGroup.append(hitArea);
+
       const handle = svgEl("circle", {
         cx: p.x,
         cy: p.y,
@@ -390,6 +766,20 @@ export function mountRoomEditor(host: HTMLElement, register: RegisterRefresh): v
       }) as SVGCircleElement;
       handle.style.cursor = "grab";
       handle.dataset.vertexIndex = String(i);
+      // Forward pointerdown from the larger invisible hit area onto
+      // the visible handle's logic by listening on both.
+      hitArea.style.cursor = "grab";
+      hitArea.addEventListener("pointerdown", (ev) => {
+        if (activePointer !== null) return;
+        activePointer = ev.pointerId;
+        drag = { kind: "vertex", index: i };
+        hitArea.setPointerCapture(ev.pointerId);
+        ev.preventDefault();
+      });
+      hitArea.addEventListener("contextmenu", (ev) => {
+        ev.preventDefault();
+        deleteVertex(i);
+      });
 
       handle.addEventListener("pointerdown", (ev) => {
         if (activePointer !== null) return;
@@ -456,6 +846,20 @@ export function mountRoomEditor(host: HTMLElement, register: RegisterRefresh): v
           },
         },
       });
+    } else if (drag.kind === "segment") {
+      const dxMm = mm.xMm - drag.startMm.xMm;
+      const dyMm = mm.yMm - drag.startMm.yMm;
+      translateSegment(drag.index, drag.startA, drag.startB, { dxMm, dyMm });
+    } else if (drag.kind === "feature-body") {
+      const dxMm = mm.xMm - drag.startMm.xMm;
+      const dyMm = mm.yMm - drag.startMm.yMm;
+      // Ceiling-feature uv axes match room x/y (deriveSurfaces).
+      applyFeatureBodyDrag(drag.featureId, drag.startOutline, dxMm, dyMm);
+    } else if (drag.kind === "feature-handle") {
+      const dxMm = mm.xMm - drag.startMm.xMm;
+      const dyMm = mm.yMm - drag.startMm.yMm;
+      // Ceiling u = +x, v = +y in room mm; resize directly.
+      applyFeatureHandleDrag(drag.featureId, drag.handle, drag.bbox, dxMm, dyMm);
     }
   });
   const endPointer = (ev: PointerEvent): void => {

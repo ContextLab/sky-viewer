@@ -60,7 +60,7 @@ Scripts in [.specify/scripts/bash/](.specify/scripts/bash/) (notably `common.sh:
 
 ## Active feature (002-stencil-template-pdf)
 
-Print Mode: generates a tileable, paper-and-tape spray-paint stencil PDF of the night sky for a user-drawn room. Status: spec + plan + research + data-model + contracts + quickstart written; no source code yet.
+Print Mode: generates a tileable, paper-and-tape spray-paint stencil PDF of the night sky for a user-drawn room. Status: SHIPPED — full implementation in `src/print/` and `src/ui/print-mode/`, tests in `tests/print/` and `tests/e2e/print-mode-*.spec.ts`. Verification artifact: [specs/002-stencil-template-pdf/verification-results.md](specs/002-stencil-template-pdf/verification-results.md).
 
 - **New module roots**: [src/print/](src/print/) (pure TS — projection geometry, tile grid, PDF builder; no DOM) and [src/ui/print-mode/](src/ui/print-mode/) (DOM — overlay + room editor + output options). Mirrors the parent feature's `app/` vs `ui/` split so geometry and PDF assembly are headlessly testable.
 - **Surfaces** (FR-007): per-surface enable map covering ceiling, every wall, and floor. Floor projects the **antipodal sky** (alt → −alt) — "see through Earth". Walls projection mode toggles via `outputOptions.blockHorizonOnWalls` (FR-008a): ON = above-horizon only; OFF = floor-to-ceiling continuous.

@@ -72,3 +72,19 @@ jobs:
       - name: Deploy to GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v4
+
+  # T061 - Lighthouse-CI gate (post-deploy). DEFERRED.
+  #
+  # Goal: fail CI if the deployed sites Lighthouse Performance score
+  # drops below 90. The 90 threshold matches both the parent feature's
+  # SC-009 (Lighthouse Performance >= 90 on a mid-tier mobile profile)
+  # and the constitution's User-Delight bar. SC-011 of feature 002
+  # likewise requires no main-view regression; Lighthouse is the
+  # canonical gate for "no main-view regression".
+  #
+  # Status: deferred. The exact action recipe and its assertion config
+  # need iteration in a separate PR before flipping on a job that gates
+  # the deploy. A starting point would be the treosh/lighthouse-ci-action
+  # at v11 with a .lighthouserc.json asserting
+  # categories:performance >= 0.9. See research.md R13 for the budget
+  # rationale.

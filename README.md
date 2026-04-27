@@ -30,6 +30,7 @@ The entire codebase — spec, plan, tasks, astronomy math, rendering pipeline, U
 - **Night Vision Mode.** Red-channel-only overlay to preserve dark-adapted eyes for real stargazing.
 - **Offline after first load.** A small service worker precaches the HTML shell and all five data files so subsequent visits work with no network.
 - **Single-page, no backend.** No API keys. No accounts. No telemetry. No runtime external calls. Host the static output anywhere.
+- **Print Mode (Star Stencil PDF).** Press the Print Mode button to enter a dedicated overlay where you sketch your room (rectangular template or arbitrary closed polygon, draggable vertices/segments, place light fixtures + windows + doors with paint/no-paint flags), pick a paper size, and press Compute. The app emits a multi-page PDF: cover page with calibrated hole-size markers (pencil / large nail / small nail / pin) and assembly instructions, followed by numbered tile pages that tile your ceiling, walls, and (optionally) floor. Cut, tape, spray-paint, peel — your room becomes the night sky from any chosen instant. Floor pages render the antipodal sky (the constellations currently below the horizon, "through the Earth"). All client-side; no server. See [specs/002-stencil-template-pdf/spec.md](specs/002-stencil-template-pdf/spec.md) for the full design.
 
 ---
 

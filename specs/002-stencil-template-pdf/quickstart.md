@@ -77,7 +77,13 @@ investigate on any failure.
 4. Below the instructions: project summary (date/time/location, surfaces,
    total page count, total hole count by size class).
 5. Print page 1 in greyscale on a B&W printer; every label and
-   marker is legible (SC-009).
+   marker is legible (SC-009). Specifically verify (T059):
+   - The four hole-size circles each have a thin outer ring so they
+     remain visible on any printer-ink density.
+   - Dotted feature outlines on tile pages render as 3 mm dash / 1.5 mm
+     gap (legible at arm's-length on letter paper).
+   - Every page label, axis legend, and instruction line renders at
+     ≥ 10 pt — readable in greyscale.
 
 ### V6 — Inspect a tile page (US1, FR-010)
 

@@ -132,7 +132,7 @@ function buildSummaryLines(job: PrintJob, summary: PreflightSummary): string[] {
 
   const c = summary.holeCountsByClass;
 
-  return [
+  const lines = [
     // 1. Title (handled separately by the renderer; included here for a11y).
     `Project: ${PROJECT_TITLE}`,
     // 2. Observation.
@@ -149,6 +149,57 @@ function buildSummaryLines(job: PrintJob, summary: PreflightSummary): string[] {
     // 7. Flags.
     `Block horizon on walls: ${job.outputOptions.blockHorizonOnWalls ? "ON" : "OFF"} — Include constellation lines: ${job.outputOptions.includeConstellationLines ? "ON" : "OFF"}`,
   ];
+
+  // 8. Features list (FR-021): per-feature accessible summary so screen
+  // readers can enumerate every cutout the user will encounter.
+  if (job.room.features.length > 0) {
+    lines.push(`Features (${job.room.features.length}):`);
+    for (const f of job.room.features) {
+      const bbox = featureBboxString(f.outline, units);
+      const paintFlag = f.paint ? "paint" : "no-paint";
+      lines.push(
+        `  - ${typeWord(f.type)} '${f.label}' on ${f.surfaceId}: ${bbox} (${paintFlag})`,
+      );
+    }
+  }
+  return lines;
+}
+
+function typeWord(t: PrintJob["room"]["features"][number]["type"]): string {
+  switch (t) {
+    case "lightFixture":
+      return "Light fixture";
+    case "recessedLight":
+      return "Recessed light";
+    case "window":
+      return "Window";
+    case "door":
+      return "Door";
+    case "closet":
+      return "Closet";
+    case "other":
+      return "Feature";
+  }
+}
+
+function featureBboxString(
+  outline: ReadonlyArray<{ uMm: number; vMm: number }>,
+  units: "imperial" | "metric",
+): string {
+  if (outline.length === 0) return "(empty)";
+  let uMin = Infinity;
+  let uMax = -Infinity;
+  let vMin = Infinity;
+  let vMax = -Infinity;
+  for (const p of outline) {
+    if (p.uMm < uMin) uMin = p.uMm;
+    if (p.uMm > uMax) uMax = p.uMm;
+    if (p.vMm < vMin) vMin = p.vMm;
+    if (p.vMm > vMax) vMax = p.vMm;
+  }
+  const widthMm = uMax - uMin;
+  const heightMm = vMax - vMin;
+  return `${lengthInUserUnits(widthMm, units)} x ${lengthInUserUnits(heightMm, units)} at u=${lengthInUserUnits(uMin, units)}, v=${lengthInUserUnits(vMin, units)}`;
 }
 
 const INSTRUCTIONS: ReadonlyArray<string> = [
