@@ -33,7 +33,7 @@ import {
   deriveSurfaces,
   projectBodyOntoSurface,
 } from "../../print/projection";
-import { computeTileGrid, tileKey } from "../../print/tile-grid";
+import { clipFeaturesToTiles, computeTileGrid, tileKey } from "../../print/tile-grid";
 import { classifyMagnitude, HOLE_DIAMETERS_MM } from "../../print/types";
 import type {
   Hole,
@@ -270,13 +270,19 @@ function buildSceneFromJob(
       list.push(h);
     }
 
+    // No-paint feature cutouts — same source of truth as pdf-builder
+    // so the 3D preview shows exactly the features the PDF will draw
+    // dotted cut lines for.
+    const featuresByTile = clipFeaturesToTiles(job.room.features, surface, grid);
+
     for (let r = 0; r < rows; r++) {
       for (let c = 0; c < cols; c++) {
         const key = tileKey(r, c);
         const tHoles = holesByTile.get(key) ?? [];
+        const tCutouts = featuresByTile.get(key) ?? [];
         // Same blank-skip behaviour as pdf-builder so the preview
         // shows what will actually print.
-        if (tHoles.length === 0) continue;
+        if (tHoles.length === 0 && tCutouts.length === 0) continue;
         const bounds: TileBounds = {
           uMinMm: c * cellWidthMm,
           vMinMm: r * cellHeightMm,
@@ -290,7 +296,7 @@ function buildSceneFromJob(
           pageNumber,
           tileBoundsMm: bounds,
           holes: tHoles,
-          featureCutouts: [],
+          featureCutouts: tCutouts,
           constellationSegments: [],
         });
         pageNumber += 1;
@@ -564,12 +570,12 @@ export function mount3dPreview(host: HTMLElement, register: RegisterRefresh): vo
     const dy = ev.clientY - lastDragY;
     lastDragX = ev.clientX;
     lastDragY = ev.clientY;
-    // Yaw: dragging right rotates the view to the right. Pitch: drag-up
-    // tilts the view up (so you see less of the ceiling).
+    // Drag-to-grab semantics (Photos/Maps style): dragging right slides
+    // the scene RIGHT, so the camera rotates LEFT. Same for pitch.
     const yawSpeed = 0.005;
     const pitchSpeed = 0.005;
-    camera.yaw += dx * yawSpeed;
-    camera.pitch -= dy * pitchSpeed;
+    camera.yaw -= dx * yawSpeed;
+    camera.pitch += dy * pitchSpeed;
     // Clamp pitch to avoid flipping.
     const PITCH_LIMIT = Math.PI / 2 - 0.01;
     if (camera.pitch > PITCH_LIMIT) camera.pitch = PITCH_LIMIT;
@@ -755,6 +761,49 @@ export function mount3dPreview(host: HTMLElement, register: RegisterRefresh): vo
           label.setAttribute("pointer-events", "none");
           label.textContent = `${surfaceShortLabel(surface)} ${tile.row},${tile.col}`;
           tileGroup.append(label);
+        }
+      }
+    }
+
+    // ---- Feature cutouts (per tile) ----
+    // Render the no-paint feature outlines as dashed magenta polylines
+    // so the user can verify their windows / doors / closets land where
+    // they expect, both at full quality AND while dragging (cheap —
+    // each room has a handful of features, not thousands).
+    if (scene) {
+      const surfaceById = new Map<string, Surface>();
+      for (const s of allSurfaces) surfaceById.set(s.id, s);
+      const featureGroup = document.createElementNS(SVG_NS, "g");
+      featureGroup.setAttribute("class", "print-mode-preview-3d-features");
+      svg.append(featureGroup);
+      for (const tile of scene.tiles) {
+        if (tile.featureCutouts.length === 0) continue;
+        const surface = surfaceById.get(tile.surfaceId);
+        if (!surface) continue;
+        for (const cutout of tile.featureCutouts) {
+          const poly = cutout.clippedOutline;
+          if (poly.length < 2) continue;
+          for (let i = 0; i < poly.length; i++) {
+            const a = poly[i];
+            const b = poly[(i + 1) % poly.length];
+            if (!a || !b) continue;
+            const wa = surfaceUVToWorld(surface, a.uMm, a.vMm);
+            const wb = surfaceUVToWorld(surface, b.uMm, b.vMm);
+            const pa = projectPoint(camera, wa.x, wa.y, wa.z, aspect);
+            const pb = projectPoint(camera, wb.x, wb.y, wb.z, aspect);
+            if (!pa || !pb) continue;
+            const sa = ndcToScreen(pa.x, pa.y, SVG_W, SVG_H);
+            const sb = ndcToScreen(pb.x, pb.y, SVG_W, SVG_H);
+            const ln = document.createElementNS(SVG_NS, "line");
+            ln.setAttribute("x1", sa.x.toFixed(1));
+            ln.setAttribute("y1", sa.y.toFixed(1));
+            ln.setAttribute("x2", sb.x.toFixed(1));
+            ln.setAttribute("y2", sb.y.toFixed(1));
+            ln.setAttribute("stroke", "rgba(220, 130, 220, 0.95)");
+            ln.setAttribute("stroke-width", "1.5");
+            ln.setAttribute("stroke-dasharray", "3 2");
+            featureGroup.append(ln);
+          }
         }
       }
     }

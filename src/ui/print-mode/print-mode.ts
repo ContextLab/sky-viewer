@@ -48,7 +48,7 @@ export function mountPrintMode(triggerHost: HTMLElement): void {
   const triggerBtn = document.createElement("button");
   triggerBtn.type = "button";
   triggerBtn.className = "print-mode-trigger";
-  triggerBtn.textContent = "🖨 Print Mode";
+  triggerBtn.textContent = "Print Mode";
   triggerBtn.setAttribute("aria-haspopup", "dialog");
   triggerBtn.setAttribute("aria-label", "Open Print Mode");
   triggerBtn.title = "Open Print Mode — generate a star-stencil PDF";
