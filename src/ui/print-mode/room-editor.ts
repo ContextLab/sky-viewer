@@ -107,54 +107,58 @@ export function mountRoomEditor(host: HTMLElement, register: RegisterRefresh): v
   const dimsRow = document.createElement("div");
   dimsRow.className = "print-mode-row print-mode-dims-row";
 
+  // Height inputs are in FEET (with mm round-trip) so users don't have
+  // to think in millimetres. Eye-height range was widened to allow
+  // second-floor / hilltop placements (a 30 ft deck or rooftop is a
+  // legitimate observation point — not just a 5 ft head height inside
+  // the room). The eye-height MAY exceed ceilingHeight; deriveSurfaces
+  // still uses ceilingHeight to bound the room volume.
   const ceilingField = document.createElement("label");
   ceilingField.className = "print-mode-field";
   const ceilingSpan = document.createElement("span");
-  ceilingSpan.textContent = "Ceiling height";
+  ceilingSpan.textContent = "Ceiling height (ft)";
   const ceilingInput = document.createElement("input");
   ceilingInput.type = "number";
   ceilingInput.className = "print-mode-input";
-  ceilingInput.min = "1500";
-  ceilingInput.max = "6000";
-  ceilingInput.step = "10";
-  ceilingInput.setAttribute("aria-label", "Ceiling height in millimetres");
-  const ceilingDisplay = document.createElement("span");
-  ceilingDisplay.className = "print-mode-readout-inline";
-  ceilingField.append(ceilingSpan, ceilingInput, ceilingDisplay);
+  ceilingInput.min = "5";
+  ceilingInput.max = "30";
+  ceilingInput.step = "0.1";
+  ceilingInput.setAttribute("aria-label", "Ceiling height in feet");
+  ceilingField.append(ceilingSpan, ceilingInput);
 
   const eyeField = document.createElement("label");
   eyeField.className = "print-mode-field";
   const eyeSpan = document.createElement("span");
-  eyeSpan.textContent = "Observer eye-height";
+  eyeSpan.textContent = "Observer eye-height (ft)";
   const eyeInput = document.createElement("input");
   eyeInput.type = "number";
   eyeInput.className = "print-mode-input";
-  eyeInput.min = "1000";
-  eyeInput.max = "2200";
-  eyeInput.step = "10";
-  eyeInput.setAttribute("aria-label", "Observer eye height in millimetres");
-  const eyeDisplay = document.createElement("span");
-  eyeDisplay.className = "print-mode-readout-inline";
-  eyeField.append(eyeSpan, eyeInput, eyeDisplay);
+  eyeInput.min = "1";
+  eyeInput.max = "100";
+  eyeInput.step = "0.1";
+  eyeInput.setAttribute("aria-label", "Observer eye height in feet");
+  eyeInput.title =
+    "Eye height of the observer. Can exceed the ceiling (e.g. a second-floor balcony or hilltop) — useful for previewing wall projections from above.";
+  eyeField.append(eyeSpan, eyeInput);
 
   dimsRow.append(ceilingField, eyeField);
   panel.append(dimsRow);
 
   ceilingInput.addEventListener("change", () => {
-    const v = Number(ceilingInput.value);
-    if (!Number.isFinite(v)) return;
-    setPrintJob({ room: { ceilingHeightMm: v } });
+    const ft = Number(ceilingInput.value);
+    if (!Number.isFinite(ft)) return;
+    setPrintJob({ room: { ceilingHeightMm: ft * MM_PER_FT } });
   });
   eyeInput.addEventListener("change", () => {
-    const v = Number(eyeInput.value);
-    if (!Number.isFinite(v)) return;
+    const ft = Number(eyeInput.value);
+    if (!Number.isFinite(ft)) return;
     const job = getPrintJob();
     setPrintJob({
       room: {
         observerPositionMm: {
           xMm: job.room.observerPositionMm.xMm,
           yMm: job.room.observerPositionMm.yMm,
-          eyeHeightMm: v,
+          eyeHeightMm: ft * MM_PER_FT,
         },
       },
     });
@@ -770,17 +774,44 @@ export function mountRoomEditor(host: HTMLElement, register: RegisterRefresh): v
       });
       segmentsGroup.append(seg);
 
-      // Segment-length label centred between vertices.
+      // Segment-length label, offset PERPENDICULAR to the segment so it
+      // doesn't sit underneath the mid-handle circle (the user feedback
+      // "corners seem to overlap" was actually the length label being
+      // obscured by the yellow handle dot at the wall midpoint).
       const midX = (pa.x + pb.x) / 2;
       const midY = (pa.y + pb.y) / 2;
+      const segDx = pb.x - pa.x;
+      const segDy = pb.y - pa.y;
+      const segLen = Math.hypot(segDx, segDy) || 1;
+      // Place the label OUTWARD-perpendicular to the segment (outside
+      // the polygon), clamped so it never extends past the SVG viewBox.
+      // Outside-the-polygon avoids overlap with both the mid-handle and
+      // any wall-feature notch drawn ON the segment. The clamp keeps
+      // labels readable when the polygon nearly fills the SVG (12 × 12
+      // ft on a 360-px viewport).
+      const cxSvg = SVG_SIZE / 2;
+      const cySvg = SVG_SIZE / 2;
+      const nx1 = -segDy / segLen;
+      const ny1 = segDx / segLen;
+      const dotOut = (midX - cxSvg) * nx1 + (midY - cySvg) * ny1;
+      const sgn = dotOut >= 0 ? 1 : -1;
+      const PERP_OFFSET = 12;
+      const TEXT_HALF_W = 22; // approx half-width of "12.00 ft" at font-size 9
+      const TEXT_HALF_H = 5;
+      let lblX = midX + sgn * nx1 * PERP_OFFSET;
+      let lblY = midY + sgn * ny1 * PERP_OFFSET;
+      lblX = Math.min(SVG_SIZE - TEXT_HALF_W, Math.max(TEXT_HALF_W, lblX));
+      lblY = Math.min(SVG_SIZE - TEXT_HALF_H, Math.max(TEXT_HALF_H, lblY));
       const segLenMm = Math.hypot(b.xMm - a.xMm, b.yMm - a.yMm);
       const lenLabel = svgEl("text", {
-        x: midX,
-        y: midY - 4,
+        x: lblX,
+        y: lblY,
         "text-anchor": "middle",
+        "dominant-baseline": "middle",
         "font-size": 9,
         fill: "var(--fg-muted)",
         "font-family": "var(--font-mono)",
+        "pointer-events": "none",
       });
       lenLabel.textContent = mmToDisplay(segLenMm, job.outputOptions.displayUnits);
       segmentsGroup.append(lenLabel);
@@ -858,6 +889,54 @@ export function mountRoomEditor(host: HTMLElement, register: RegisterRefresh): v
         if (f.surfaceId !== "ceiling") continue;
         renderCeilingFeature(f, xMin, yMin);
       }
+    }
+
+    // Wall features: draw a small notch on the corresponding wall
+    // segment so the user has a visual confirmation that the feature
+    // was placed (without the wall-elevation panel being open). The
+    // notch sits ON the wall, offset slightly inward, with width
+    // matching the feature's wall-local u-range.
+    for (const f of job.room.features) {
+      if (!f.surfaceId.startsWith("wall-")) continue;
+      const wallIdx = Number(f.surfaceId.slice(5));
+      const a = verts[wallIdx];
+      const b = verts[(wallIdx + 1) % verts.length];
+      if (!a || !b) continue;
+      const segDxMm = b.xMm - a.xMm;
+      const segDyMm = b.yMm - a.yMm;
+      const segLenMm = Math.hypot(segDxMm, segDyMm) || 1;
+      const ux = segDxMm / segLenMm;
+      const uy = segDyMm / segLenMm;
+      let u0 = Infinity;
+      let u1 = -Infinity;
+      for (const p of f.outline) {
+        if (p.uMm < u0) u0 = p.uMm;
+        if (p.uMm > u1) u1 = p.uMm;
+      }
+      if (!Number.isFinite(u0) || !Number.isFinite(u1)) continue;
+      const aMm = { xMm: a.xMm + ux * u0, yMm: a.yMm + uy * u0 };
+      const bMm = { xMm: a.xMm + ux * u1, yMm: a.yMm + uy * u1 };
+      const aP = mmToSvg(aMm.xMm, aMm.yMm);
+      const bP = mmToSvg(bMm.xMm, bMm.yMm);
+      const stroke = f.paint
+        ? "rgba(120, 200, 120, 0.95)"
+        : "rgba(245, 215, 110, 0.95)";
+      const notch = svgEl("line", {
+        x1: aP.x.toFixed(1),
+        y1: aP.y.toFixed(1),
+        x2: bP.x.toFixed(1),
+        y2: bP.y.toFixed(1),
+        stroke,
+        "stroke-width": 5,
+        "stroke-linecap": "round",
+        "stroke-dasharray": f.paint ? "" : "4 2",
+        class: "print-mode-wall-feature-notch",
+        "pointer-events": "none",
+      });
+      const titleEl = svgEl("title", {});
+      titleEl.textContent = `${f.label} (${f.paint ? "paint" : "no-paint"})`;
+      notch.append(titleEl);
+      featuresGroup.append(notch);
     }
 
     // Vertices.
@@ -1069,20 +1148,14 @@ export function mountRoomEditor(host: HTMLElement, register: RegisterRefresh): v
   // ---- Refresh ----
   const refresh = (): void => {
     const job = getPrintJob();
-    if (Number(ceilingInput.value) !== job.room.ceilingHeightMm) {
-      ceilingInput.value = String(job.room.ceilingHeightMm);
+    const ceilingFt = job.room.ceilingHeightMm / MM_PER_FT;
+    const eyeFt = job.room.observerPositionMm.eyeHeightMm / MM_PER_FT;
+    if (Math.abs(Number(ceilingInput.value) - ceilingFt) > 0.001) {
+      ceilingInput.value = ceilingFt.toFixed(2);
     }
-    if (Number(eyeInput.value) !== job.room.observerPositionMm.eyeHeightMm) {
-      eyeInput.value = String(job.room.observerPositionMm.eyeHeightMm);
+    if (Math.abs(Number(eyeInput.value) - eyeFt) > 0.001) {
+      eyeInput.value = eyeFt.toFixed(2);
     }
-    ceilingDisplay.textContent = mmToDisplay(
-      job.room.ceilingHeightMm,
-      job.outputOptions.displayUnits,
-    );
-    eyeDisplay.textContent = mmToDisplay(
-      job.room.observerPositionMm.eyeHeightMm,
-      job.outputOptions.displayUnits,
-    );
     render();
   };
   register(refresh);
