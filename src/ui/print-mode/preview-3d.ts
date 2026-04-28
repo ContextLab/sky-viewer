@@ -54,6 +54,30 @@ import type { RegisterRefresh } from "./print-mode";
 const SVG_NS = "http://www.w3.org/2000/svg";
 const DEG2RAD = Math.PI / 180;
 
+/**
+ * Even-odd point-in-polygon test on (uMm, vMm). Mirrors the helper in
+ * pdf-builder.ts so the 3D preview applies the SAME no-paint exclusion
+ * to holes that the PDF builder does.
+ */
+function pointInPolygonUV(
+  u: number,
+  v: number,
+  poly: ReadonlyArray<{ uMm: number; vMm: number }>,
+): boolean {
+  let inside = false;
+  const n = poly.length;
+  for (let i = 0, j = n - 1; i < n; j = i++) {
+    const a = poly[i];
+    const b = poly[j];
+    if (!a || !b) continue;
+    const intersects =
+      a.vMm > v !== b.vMm > v &&
+      u < ((b.uMm - a.uMm) * (v - a.vMm)) / (b.vMm - a.vMm + 1e-15) + a.uMm;
+    if (intersects) inside = !inside;
+  }
+  return inside;
+}
+
 // ---------------------------------------------------------------------------
 // Dataset cache (shared with the compute panel pattern, but module-local).
 // ---------------------------------------------------------------------------
@@ -250,13 +274,33 @@ function buildSceneFromJob(
       }
     }
 
+    // FR-013 mirror: drop any hole whose centre falls inside a
+    // no-paint feature on this surface. The PDF builder does the same
+    // exclusion (pdf-builder.ts § 4) so the 3D preview must match —
+    // otherwise stars appear inside windows/doors and the user can't
+    // tell that the cutout will mask them out.
+    const noPaintFeatures = job.room.features.filter(
+      (f) => f.surfaceId === surface.id && f.paint === false,
+    );
+    const keptHoles =
+      noPaintFeatures.length === 0
+        ? holes
+        : holes.filter((h) => {
+            for (const f of noPaintFeatures) {
+              if (pointInPolygonUV(h.surfaceUMm, h.surfaceVMm, f.outline)) {
+                return false;
+              }
+            }
+            return true;
+          });
+
     // Bin holes into tiles using the same row/col floor-division as
     // assignHolesToTiles. We DON'T need the edge-tolerance multi-tile
     // duplication here — the preview only needs to know "how many
     // sheets do I print, what's on each one" — so primary tile only.
     const { rows, cols, cellWidthMm, cellHeightMm } = grid;
     const holesByTile = new Map<string, Hole[]>();
-    for (const h of holes) {
+    for (const h of keptHoles) {
       if (h.surfaceUMm < 0 || h.surfaceUMm > surface.widthMm) continue;
       if (h.surfaceVMm < 0 || h.surfaceVMm > surface.heightMm) continue;
       const c = Math.min(Math.max(Math.floor(h.surfaceUMm / cellWidthMm), 0), cols - 1);
@@ -325,12 +369,38 @@ interface Camera {
 }
 
 function makeInitialCamera(job: PrintJob): Camera {
+  // Default to facing the FIRST enabled wall (or wall-0 if none enabled
+  // yet) at horizon pitch. This is more useful than looking straight up
+  // at the ceiling: the user can immediately see what their stencil
+  // will look like on a wall, including any windows/doors they placed.
+  // Yaw is computed from the wall's midpoint relative to the observer.
+  const obs = job.room.observerPositionMm;
+  let yaw = 0;
+  const surfaces = deriveSurfaces(
+    job.room,
+    job.outputOptions.blockHorizonOnWalls,
+  );
+  const walls = surfaces.filter((s) => s.kind === "wall");
+  const targetWall = walls.find((s) => s.enabled) ?? walls[0];
+  if (targetWall) {
+    // Midpoint of the wall = origin + uAxis * (widthMm / 2).
+    const u = targetWall.originPose.uAxisMm;
+    const o = targetWall.originPose.originMm;
+    const midX = o.x + u.x * (targetWall.widthMm / 2);
+    const midY = o.y + u.y * (targetWall.widthMm / 2);
+    const dx = midX - obs.xMm;
+    const dy = midY - obs.yMm;
+    // Yaw is measured from +y (north) clockwise toward +x (east).
+    // forward = (sin(yaw), cos(yaw)) when pitch=0, so we want
+    // sin(yaw) = dx/r, cos(yaw) = dy/r.
+    yaw = Math.atan2(dx, dy);
+  }
   return {
-    posX: job.room.observerPositionMm.xMm,
-    posY: job.room.observerPositionMm.yMm,
-    posZ: job.room.observerPositionMm.eyeHeightMm,
-    yaw: 0,
-    pitch: Math.PI / 2 - 0.001, // looking straight up (avoid singularity)
+    posX: obs.xMm,
+    posY: obs.yMm,
+    posZ: obs.eyeHeightMm,
+    yaw,
+    pitch: 0,
     fovY: 60 * DEG2RAD,
   };
 }
@@ -378,7 +448,12 @@ function projectPoint(
   const camY = dx * ux + dy * uy + dz * uz;
   const camZ = dx * fx + dy * fy + dz * fz;
 
-  if (camZ <= 1) return null; // behind / too close
+  // Near-plane: 50 mm in front of camera. Below this, projection
+  // produces extreme NDC values (camX*f / camZ blows up) which renders
+  // as wildly off-screen lines that "wrap around" visually. 50 mm is
+  // generous enough that no in-room geometry should ever land inside
+  // the eye position.
+  if (camZ <= 50) return null;
 
   const f = 1 / Math.tan(cam.fovY / 2);
   const ndcX = (camX * f) / aspect / camZ;
