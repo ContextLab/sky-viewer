@@ -45,6 +45,14 @@ function getFocusable(root: HTMLElement): HTMLElement[] {
 export function mountPrintMode(triggerHost: HTMLElement): void {
   ensureStylesInjected();
 
+  // Wrap the trigger in a `.panel` so it carries the same dark-grey
+  // backdrop, padding, and rounded-corner frame as its sibling top-bar
+  // controls (DATE/TIME, Location, FOV, Night Vision Mode). Without
+  // the wrapper the bare button looked visually orphaned next to its
+  // panel-wrapped neighbours.
+  const panel = document.createElement("div");
+  panel.className = "panel print-mode-trigger-panel";
+
   const triggerBtn = document.createElement("button");
   triggerBtn.type = "button";
   triggerBtn.className = "print-mode-trigger";
@@ -53,7 +61,8 @@ export function mountPrintMode(triggerHost: HTMLElement): void {
   triggerBtn.setAttribute("aria-label", "Open Print Mode");
   triggerBtn.title = "Open Print Mode — generate a star-stencil PDF";
   triggerBtn.addEventListener("click", () => openOverlay());
-  triggerHost.append(triggerBtn);
+  panel.append(triggerBtn);
+  triggerHost.append(panel);
 
   let overlayEl: HTMLElement | null = null;
   let previouslyFocused: HTMLElement | null = null;
