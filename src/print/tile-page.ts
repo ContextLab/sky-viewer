@@ -195,11 +195,28 @@ export function emitTilePage(
   }
 
   // ---- 5. Holes ------------------------------------------------------------
+  // CRITICAL: clip every hole to the PRINTABLE rectangle (the area
+  // inside the page margins). The edge-tolerance pass in
+  // assignHolesToTiles can duplicate a hole onto an adjacent tile so
+  // that its centre lies just BEYOND the printable area's edge — left
+  // unclipped, the hole would render in the page-margin band and be
+  // chopped off (or worse, scaled away entirely) by the printer
+  // driver. We skip any hole whose centre+radius would extend outside
+  // the printable rect, so what the user sees in the PDF is exactly
+  // what will print after the driver applies its physical-margin cut.
   doc.setLineWidth(0.15);
   for (const h of tile.holes) {
     const cx = uToX(h.surfaceUMm);
     const cy = vToY(h.surfaceVMm);
     const radius = HOLE_DIAMETERS_MM[h.sizeClass] / 2;
+    if (
+      cx - radius < printLeft ||
+      cx + radius > printRight ||
+      cy - radius < printTop ||
+      cy + radius > printBottom
+    ) {
+      continue;
+    }
 
     // Filled disc.
     doc.setFillColor("0");

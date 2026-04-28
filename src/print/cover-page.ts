@@ -302,6 +302,50 @@ export function emitCoverPage(
   }
   y = diamY + 6;
 
+  // ---- 3a. Print-scale calibration ruler ----------------------------------
+  // A 100 mm reference line. The user holds a metric ruler against this
+  // line: if it doesn't measure exactly 100 mm, the printer driver is
+  // scaling the page (typical default: "Fit to printable area" / "Scale
+  // to fit" — both shrink the output by 2-5%, which would put star
+  // positions in the wrong places). Telling the user explicitly to
+  // disable that option is much more useful than printing a generic
+  // "make sure scaling is 100%" sentence.
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(12);
+  doc.text("Print-scale calibration", contentLeft, y);
+  y += 6;
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(9);
+  const calibrationText =
+    "Hold a metric ruler against the line below. It must measure exactly 100 mm. " +
+    "If it's shorter, your printer is scaling the output — disable Fit to page / Shrink " +
+    "to printable area in the print dialog and set scale to 100%. Star positions on the " +
+    "stencil pages assume 1:1 print scale.";
+  for (const ln of doc.splitTextToSize(calibrationText, contentWidth)) {
+    doc.text(ln, contentLeft, y);
+    y += 4.2;
+  }
+  y += 3;
+
+  // The 100 mm reference line itself, with end ticks and a centred label.
+  const rulerLeft = contentLeft;
+  const rulerRight = contentLeft + 100;
+  const rulerY = y + 4;
+  doc.setLineWidth(0.5);
+  doc.line(rulerLeft, rulerY, rulerRight, rulerY);
+  // End-cap ticks (3 mm tall, centred on the line).
+  doc.line(rulerLeft, rulerY - 1.5, rulerLeft, rulerY + 1.5);
+  doc.line(rulerRight, rulerY - 1.5, rulerRight, rulerY + 1.5);
+  // Centre tick + label.
+  const midX = (rulerLeft + rulerRight) / 2;
+  doc.line(midX, rulerY - 1, midX, rulerY + 1);
+  doc.setFontSize(8);
+  doc.text("0", rulerLeft - 1, rulerY + 5);
+  const labelText100 = "100 mm";
+  const w100 = doc.getTextWidth(labelText100);
+  doc.text(labelText100, rulerRight - w100, rulerY + 5);
+  y = rulerY + 9;
+
   // ---- 4. Step-by-step instructions ---------------------------------------
   doc.setFont("helvetica", "bold");
   doc.setFontSize(12);
